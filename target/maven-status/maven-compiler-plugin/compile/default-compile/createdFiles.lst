@@ -1,0 +1,4 @@
+pl\kordek\forex\bot\App.class
+pl\kordek\forex\bot\Robot.class
+pl\kordek\forex\bot\constants\Configuration.class
+pl\kordek\forex\bot\exceptions\LoginFailedException.class
