@@ -22,9 +22,11 @@ public interface Configuration {
         "USDSEK","NZDCHF","GBPNZD","EURSEK","CHFJPY","NZDJPY","EURNZD","AUDCHF","EURAUD","USDSGD","USDNOK","GBPAUD","CADCHF",
     "EURCAD","AUDNZD","AUDCAD","GBPCAD","EURNOK","USDIDX","CADJPY","AUDJPY","NZDCAD"};
 	
-	public static final String[] instrumentsFX = oneFX;
+	public static final String[] instrumentsFX = majorFX;
     
-    public static final PERIOD_CODE candlePeriod = PERIOD_CODE.PERIOD_M1;
+    public static final PERIOD_CODE candlePeriod = PERIOD_CODE.PERIOD_H1;
     public static final Integer chartPeriodInHours = 24;
     public static final Double volume = 0.1;
+
+    public static final String sinceDate = "2019/12/24 15:30:00";
 }
