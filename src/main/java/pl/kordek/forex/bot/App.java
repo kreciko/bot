@@ -30,6 +30,7 @@ import org.ta4j.core.Order.OrderType;
 
 import pl.kordek.forex.bot.constants.Configuration;
 import pl.kordek.forex.bot.exceptions.LoginFailedException;
+import pl.kordek.forex.bot.exceptions.XTBCommunicationException;
 import pro.xstore.api.message.codes.PERIOD_CODE;
 import pro.xstore.api.message.command.APICommandFactory;
 import pro.xstore.api.message.error.APICommandConstructionException;
@@ -74,36 +75,42 @@ public class App {
 					new Credentials(Configuration.username, Configuration.password));
 
 			if (loginResponse != null && !loginResponse.getStatus()) {
-				throw new LoginFailedException("Failed to login");
+				throw new XTBCommunicationException("Failed to login");
 			}
 
 			populateBaseBarSeriesMap(connector);
 
 			getOpenedPositions(connector);
 
-			boolean displayTradingRecordsMap = false;
+			boolean tRecordUpdateNeeded;
+			int endIndex = baseBarSeriesMap.get(Configuration.oneFX[0]).getEndIndex();
 			for (String symbol : Configuration.instrumentsFX) {
 				SymbolResponse sr = APICommandFactory.executeSymbolCommand(connector, symbol);
-
-				Robot robot = new Robot(baseBarSeriesMap.get(symbol), longTradingRecordsMap.get(symbol), shortTradingRecordsMap.get(symbol), openedPositions,
-						sr, connector);
+						
+				tRecordUpdateNeeded = updateTradingRecord(endIndex, symbol, longTradingRecordsMap.get(symbol), shortTradingRecordsMap.get(symbol));
+				
+				//something happened in xtb (like stop loss). trading record is updated but we skip this symbol
+				if(tRecordUpdateNeeded) {
+					System.out.println(new Date() + ": Trade record was outdated for symbol "+symbol+". Exited the trade");
+					continue;
+				}
+				
+				Robot robot = new Robot(baseBarSeriesMap.get(symbol), longTradingRecordsMap.get(symbol),
+						shortTradingRecordsMap.get(symbol), openedPositions, sr, connector);
 				robot.runRobotIteration();
 
-				// just in case i need tradingRecordMap
-				// if(tr.getLastOrder() !=null && baseBarSeriesMap.get(symbol).getEndIndex() ==
-				// tr.getLastOrder().getIndex()) {
-//		        	displayTradingRecordsMap = true;
-//		        }
 				Thread.sleep(500);
 			}
 
 			serializeTradingRecords(tradingRecordsFileLocation);
 
 			getOpenedPositions(connector);
-			System.out.println(new Date() + ": Last robot iteration. Opened: "
+			System.out.println(new Date() + ": Last robot iteration. Positions opened: "
 					+ openedPositions.stream().map(e -> e.getSymbol()).collect(toList()));
 			System.out.println();
 
+		} catch (XTBCommunicationException xtbEx) {
+			System.out.println("XTB Exception:" + xtbEx.getMessage());
 		} catch (Exception e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -111,6 +118,21 @@ public class App {
 			return;
 		}
 
+	}
+
+	private static boolean updateTradingRecord(int endIndex, String symbol, TradingRecord longTradingRecord, TradingRecord shortTradingRecord) {
+		//long trading record has a trade that is opened (not new), but it's not existing in XTB 
+		if(!longTradingRecord.getCurrentTrade().isNew() && !openedPositions.stream().map(e -> e.getSymbol()).anyMatch(e -> e.equals(symbol))) {
+			longTradingRecord.exit(endIndex);
+			return true;
+		}
+		
+		if(!shortTradingRecord.getCurrentTrade().isNew() && !openedPositions.stream().map(e -> e.getSymbol()).anyMatch(e -> e.equals(symbol))) {
+			shortTradingRecord.exit(endIndex);
+			return true;
+		}
+		
+		return false;
 	}
 
 	private static BaseBarSeries convertRateInfoToBarSeries(List<RateInfoRecord> rateInfoRecords, String symbol) {
@@ -150,7 +172,7 @@ public class App {
 
 			List<RateInfoRecord> rateInfos = cr.getRateInfos();
 
-			// rateInfos.size()-2 - get last full candle. New one is still changing
+			// rateInfos.size()-1 - get last full candle. New one is still changing
 			BaseBarSeries baseBarInfos = convertRateInfoToBarSeries(rateInfos.subList(0, rateInfos.size() - 1), symbol);
 
 			baseBarSeriesMap.put(symbol, baseBarInfos);

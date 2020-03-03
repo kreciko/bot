@@ -3,13 +3,13 @@ package pl.kordek.forex.bot;
 import java.util.List;
 
 import org.ta4j.core.BaseBarSeries;
-import org.ta4j.core.BaseStrategy;
+import org.ta4j.core.BaseTradingRecord;
 import org.ta4j.core.Order.OrderType;
 import org.ta4j.core.Rule;
 import org.ta4j.core.Strategy;
 import org.ta4j.core.TradingRecord;
-import org.ta4j.core.indicators.SMAIndicator;
 import org.ta4j.core.indicators.helpers.ClosePriceIndicator;
+import org.ta4j.core.indicators.helpers.ConstantIndicator;
 import org.ta4j.core.indicators.ichimoku.IchimokuChikouSpanIndicator;
 import org.ta4j.core.indicators.ichimoku.IchimokuKijunSenIndicator;
 import org.ta4j.core.indicators.ichimoku.IchimokuSenkouSpanAIndicator;
@@ -17,12 +17,12 @@ import org.ta4j.core.indicators.ichimoku.IchimokuSenkouSpanBIndicator;
 import org.ta4j.core.indicators.ichimoku.IchimokuTenkanSenIndicator;
 import org.ta4j.core.num.DoubleNum;
 import org.ta4j.core.trading.rules.CrossedDownIndicatorRule;
-import org.ta4j.core.trading.rules.CrossedUpIndicatorRule;
 import org.ta4j.core.trading.rules.OverIndicatorRule;
 import org.ta4j.core.trading.rules.TrailingStopLossRule;
 import org.ta4j.core.trading.rules.UnderIndicatorRule;
 
 import pl.kordek.forex.bot.constants.Configuration;
+import pl.kordek.forex.bot.exceptions.XTBCommunicationException;
 import pro.xstore.api.message.codes.TRADE_OPERATION_CODE;
 import pro.xstore.api.message.codes.TRADE_TRANSACTION_TYPE;
 import pro.xstore.api.message.command.APICommandFactory;
@@ -33,6 +33,8 @@ import pro.xstore.api.message.records.SymbolRecord;
 import pro.xstore.api.message.records.TradeRecord;
 import pro.xstore.api.message.records.TradeTransInfoRecord;
 import pro.xstore.api.message.response.APIErrorResponse;
+import pro.xstore.api.message.response.MarginLevelResponse;
+import pro.xstore.api.message.response.MarginTradeResponse;
 import pro.xstore.api.message.response.SymbolResponse;
 import pro.xstore.api.message.response.TradeTransactionResponse;
 import pro.xstore.api.sync.SyncAPIConnector;
@@ -48,6 +50,7 @@ public class Robot {
 	private List<TradeRecord> openedPositions;
 	
 	private SyncAPIConnector connector = null;
+	
 
 	public Robot(BaseBarSeries series, TradingRecord longTradingRecord, TradingRecord shortTradingRecord,
 			List<TradeRecord> openedPositions, SymbolResponse symbolResponse, SyncAPIConnector connector) {
@@ -59,164 +62,91 @@ public class Robot {
 		this.shortTradingRecord = shortTradingRecord;
 	}
 
-	public void runRobotIteration() {
+	public void runRobotIteration() throws XTBCommunicationException {
 			String symbol = symbolResponse.getSymbol().getSymbol();
 			
-			Strategy longStrategy = buildLongStrategy();
-			Strategy shortStrategy = buildShortStrategy();
-
 			int endIndex = series.getEndIndex();
-			checkForLongPositions(endIndex, symbol, longStrategy);
-			checkForShortPositions(endIndex, symbol, shortStrategy);
-		
+			
+			Strategy longStrategy = StrategyBuilder.buildLongStrategy(endIndex, series);
+			Strategy shortStrategy = StrategyBuilder.buildShortStrategy(endIndex, series);
+			
+			//check for long
+			checkForPositions(endIndex, symbol, longStrategy, shortStrategy, OrderType.BUY);
+			
+			//check for short
+			checkForPositions(endIndex, symbol, shortStrategy, longStrategy, OrderType.SELL);
+			
+//			strategyTest(endIndex-8,symbol);
 	}
 	
-	private void checkForLongPositions(int endIndex, String symbol, Strategy longStrategy) {
+	private boolean checkForPositions(int endIndex, String symbol, Strategy baseStrategy, Strategy oppositeStrategy,
+			OrderType orderType) throws XTBCommunicationException {
+		TradingRecord tradingRecord = orderType == OrderType.BUY ? longTradingRecord : shortTradingRecord;
+		String strategyType = orderType == OrderType.BUY ? "Long" : "Short";
+		boolean shouldEnter = baseStrategy.shouldEnter(endIndex, tradingRecord);
+		boolean shouldExit = baseStrategy.shouldExit(endIndex, tradingRecord);
+		boolean shouldOppositeEnter = oppositeStrategy.shouldEnter(endIndex);
+		boolean isSymbolOpenedXTB = openedPositions.stream().map(e -> e.getSymbol()).anyMatch(e -> e.equals(symbol));
 
-		//if the short trades are not closed it can result in premature buy of the opened position
-		if (shortTradingRecord.getLastOrder() == null || !shortTradingRecord.getLastOrder().isSell()) {
-			if (longStrategy.shouldEnter(endIndex, longTradingRecord) ) {
-				System.out.println("Long strategy should ENTER on " + symbol);
-				boolean entered = longTradingRecord.enter(endIndex, series.getLastBar().getClosePrice(), DoubleNum.valueOf(Configuration.volume));
-                if (entered) {
-                	openPosition(symbol, OrderType.BUY);
-                }
-			} else if (longStrategy.shouldExit(endIndex, longTradingRecord)) {
-				System.out.println("Long strategy should EXIT on " + symbol);
-				boolean exited = longTradingRecord.exit(endIndex, series.getLastBar().getClosePrice(), DoubleNum.valueOf(Configuration.volume));
-                if (exited) {
-                	closePosition(symbol, OrderType.BUY);
-                }
+		if (shouldEnter && !isSymbolOpenedXTB) {
+			if(!isEnoughMargin(symbol)) {
+				System.out.println(strategyType + " strategy should ENTER on " + symbol + " but not enough margin");
+				return false;
+			}
+			System.out.println(strategyType + " strategy should ENTER on " + symbol);
+			boolean entered = tradingRecord.enter(endIndex, series.getLastBar().getClosePrice(),
+					DoubleNum.valueOf(Configuration.volume));
+			if (entered) {
+				openPosition(symbol, orderType);
+				return true;
+			} else {
+				System.out.println("Didn't enter long position for: " + symbol);
+			}
+		} else if ((shouldExit || shouldOppositeEnter) && isSymbolOpenedXTB) {
+			System.out.println(strategyType + " strategy should EXIT on " + symbol + ". Should this exit:" + shouldExit
+					+ ". Should opposite enter:" + shouldOppositeEnter);
+			boolean exited = longTradingRecord.exit(endIndex, series.getLastBar().getClosePrice(),
+					DoubleNum.valueOf(Configuration.volume));
+			if (exited) {
+				closePosition(symbol, orderType);
+				return true;
+			} else {
+				System.out.println("Didn't exit long position for: " + symbol);
 			}
 		}
+		return false;
 	}
 	
-	private void checkForShortPositions(int endIndex, String symbol, Strategy shortStrategy) {
-		
-		//if the long trades are not closed it can result in premature sell of the opened position
-		if (longTradingRecord.getLastOrder() == null || !longTradingRecord.getLastOrder().isBuy()) {
-			if (shortStrategy.shouldEnter(endIndex, shortTradingRecord)) {
-				System.out.println("Short strategy should ENTER on " + symbol);
-				boolean entered = shortTradingRecord.enter(endIndex, series.getLastBar().getClosePrice(), DoubleNum.valueOf(Configuration.volume));
-                if (entered) {
-                	openPosition(symbol, OrderType.SELL);
-                }
-			} else if (shortStrategy.shouldExit(endIndex, shortTradingRecord)) {
-				System.out.println("Short strategy should EXIT on " + symbol);
-				boolean exited = shortTradingRecord.exit(endIndex, series.getLastBar().getClosePrice(), DoubleNum.valueOf(Configuration.volume));
-                if (exited) {
-                	closePosition(symbol, OrderType.SELL);
-                }
-			}
-		}
-	}
-	
-	private void openPosition(String symbol, OrderType orderType) {
+	private void openPosition(String symbol, OrderType orderType) throws XTBCommunicationException {
 		// Our strategy should enter
-		if (openedPositions.stream().map(e -> e.getSymbol()).anyMatch(e -> e.equals(symbol))) {
-			System.out.println("Failed to open "+ orderType + " for" + symbol + ". Symbol already in the XTB trading list");
-			return;
-		}
 
 		try {
 			if(orderType.equals(OrderType.BUY)) enterBuyXTB();
 			else enterSellXTB();
+			System.out.println("Opened successfully");
 		} catch (APICommandConstructionException | APIReplyParseException | APICommunicationException
 				| APIErrorResponse e1) {
 			System.out.println("Failed to open " + symbol);
+			throw new XTBCommunicationException("Couldn't open the position in XTB: "+symbol);
 		}
 	}
 	
-	private void closePosition(String symbol, OrderType orderType) {
-		// Our strategy should exit
-		if (!openedPositions.stream().map(e -> e.getSymbol()).anyMatch(e -> e.equals(symbol))) {
-			System.out.println("Failed to close " + orderType + " for" + symbol + ". Symbol not in the XTB trading list");
-			return;
-		}
+	private void closePosition(String symbol, OrderType orderType) throws XTBCommunicationException {
 		try {
 			if(orderType.equals(OrderType.BUY)) exitBuyXTB();
 			else exitSellXTB();
+			System.out.println("Closed successfully");
 		} catch (APICommandConstructionException | APIReplyParseException | APICommunicationException
 				| APIErrorResponse e1) {
 			System.out.println("Failed to close " + symbol);
+			throw new XTBCommunicationException("Couldn't close the position in XTB: "+symbol);
 		}
-	}
-
-	private Strategy buildLongStrategy() {
-		if (series == null) {
-			throw new IllegalArgumentException("Series cannot be null");
-		}
-		ClosePriceIndicator closePrice = new ClosePriceIndicator(series);
-		IchimokuTenkanSenIndicator tenkanSen = new IchimokuTenkanSenIndicator(series, 9);
-		IchimokuKijunSenIndicator kijunSen = new IchimokuKijunSenIndicator(series, 26);
-		IchimokuSenkouSpanAIndicator senkouSpanA = new IchimokuSenkouSpanAIndicator(series, tenkanSen, kijunSen);
-		IchimokuSenkouSpanBIndicator senkouSpanB = new IchimokuSenkouSpanBIndicator(series, 52);
-		IchimokuChikouSpanIndicator chikouSpan = new IchimokuChikouSpanIndicator(series, 26);
-
-		Rule priceCrossesKijunUpRule = new CrossedUpIndicatorRule(closePrice, kijunSen);
-		Rule priceOverCloud = new OverIndicatorRule(closePrice, senkouSpanA)
-				.and(new OverIndicatorRule(closePrice, senkouSpanB));
-		Rule chikouOverPrice = new OverIndicatorRule(chikouSpan, closePrice);
-
-		Rule signalA = priceCrossesKijunUpRule.and(priceOverCloud);
-		Rule signalB = new CrossedUpIndicatorRule(closePrice, senkouSpanA).and(priceOverCloud);
-
-		Rule signalOut = new TrailingStopLossRule(closePrice, DoubleNum.valueOf(0.5));
-		
-		Rule entryRule = chikouOverPrice.and(signalA.or(signalB));
-		Rule exitRule = signalOut;
-		return new BaseStrategy(entryRule, exitRule);
-	}
-	
-	private Strategy buildShortStrategy() {
-		if (series == null) {
-			throw new IllegalArgumentException("Series cannot be null");
-		}
-		ClosePriceIndicator closePrice = new ClosePriceIndicator(series);
-		IchimokuTenkanSenIndicator tenkanSen = new IchimokuTenkanSenIndicator(series, 9);
-		IchimokuKijunSenIndicator kijunSen = new IchimokuKijunSenIndicator(series, 26);
-		IchimokuSenkouSpanAIndicator senkouSpanA = new IchimokuSenkouSpanAIndicator(series, tenkanSen, kijunSen);
-		IchimokuSenkouSpanBIndicator senkouSpanB = new IchimokuSenkouSpanBIndicator(series, 52);
-		IchimokuChikouSpanIndicator chikouSpan = new IchimokuChikouSpanIndicator(series, 26);
-
-		Rule priceCrossesKijunDownRule = new CrossedDownIndicatorRule(closePrice, kijunSen);
-		Rule priceUnderCloud = new UnderIndicatorRule(closePrice, senkouSpanA)
-				.and(new UnderIndicatorRule(closePrice, senkouSpanB));
-		Rule chikouUnderPrice = new UnderIndicatorRule(chikouSpan, closePrice);
-
-		Rule signalA = priceCrossesKijunDownRule.and(priceUnderCloud);
-		Rule signalB = new CrossedDownIndicatorRule(closePrice, senkouSpanB).and(priceUnderCloud);
-
-		Rule signalOut = new TrailingStopLossRule(closePrice, DoubleNum.valueOf(0.5));
-		
-		Rule entryRule = chikouUnderPrice.and(signalA.or(signalB));
-		Rule exitRule = signalOut;
-		return new BaseStrategy(entryRule, exitRule);
-	}
-	
-	private Strategy buildStrategySMA() {
-		if (series == null) {
-			throw new IllegalArgumentException("Series cannot be null");
-		}
-		ClosePriceIndicator closePrice = new ClosePriceIndicator(series);
-
-		SMAIndicator shortSma = new SMAIndicator(closePrice, 9);
-		SMAIndicator longSma = new SMAIndicator(closePrice, 26);
-
-		Rule entryRule = null;
-		Rule exitRule = null;
-
-		entryRule = new CrossedUpIndicatorRule(shortSma, longSma);
-		exitRule = new CrossedDownIndicatorRule(shortSma, longSma);
-
-		Rule signalOut = new TrailingStopLossRule(closePrice, DoubleNum.valueOf(0.01));
-
-		return new BaseStrategy(entryRule, signalOut);
 	}
 
 	private void enterBuyXTB() throws APICommandConstructionException, APIReplyParseException, APICommunicationException, APIErrorResponse {
 		SymbolRecord symbolRecord = symbolResponse.getSymbol();
 		//Double stopLoss = calculateStopLossInPips(sr).doubleValue();	
+		//Rule signalOut = new TrailingStopLossRule(closePrice, DoubleNum.valueOf(0.5));
 		TradeTransInfoRecord ttInfoRecord = new TradeTransInfoRecord(TRADE_OPERATION_CODE.BUY,
 				TRADE_TRANSACTION_TYPE.OPEN, symbolRecord.getAsk(), 0.0, 0.0, symbolRecord.getSymbol(), Configuration.volume, 0L, "" , 0L);
 		
@@ -242,6 +172,7 @@ public class Robot {
 	private void enterSellXTB() throws APICommandConstructionException, APIReplyParseException, APICommunicationException, APIErrorResponse {
 		SymbolRecord symbolRecord = symbolResponse.getSymbol();
 		//Double stopLoss = calculateStopLossInPips(sr).doubleValue();	
+		
 		TradeTransInfoRecord ttInfoRecord = new TradeTransInfoRecord(TRADE_OPERATION_CODE.SELL,
 				TRADE_TRANSACTION_TYPE.OPEN, symbolRecord.getBid(), 0.0, 0.0, symbolRecord.getSymbol(), Configuration.volume, 0L, "" , 0L);
 		
@@ -266,8 +197,76 @@ public class Robot {
 		
 		System.out.println("Closed sell position for: " + tr.getSymbol() + ". successfully");
 	}
+	
+	private Double getMarginFree() throws APICommandConstructionException, APIReplyParseException, APICommunicationException, APIErrorResponse {
+		MarginLevelResponse marginLevelResponse;
+        marginLevelResponse = APICommandFactory.executeMarginLevelCommand(connector);
+        return marginLevelResponse.getMargin_free();
+	}
+	
+	private Double getMarginNeeded(String symbol) throws APICommandConstructionException, APIReplyParseException, APICommunicationException, APIErrorResponse {
+		MarginTradeResponse marginTradeResponse;
+		marginTradeResponse = APICommandFactory.executeMarginTradeCommand(connector, symbol,Configuration.volume);
+        return marginTradeResponse.getMargin();
+	}
+	
+	private boolean isEnoughMargin(String symbol) throws XTBCommunicationException {
+		Double marginFree = 0.0;
+		Double marginNeeded = 0.0;
+		try {
+			marginFree = getMarginFree();
+			marginNeeded = getMarginNeeded(symbol);
+		} catch (APICommandConstructionException | APIReplyParseException | APICommunicationException
+				| APIErrorResponse e) {
+			throw new XTBCommunicationException("Couldn't execute is enough margin check");
+		}
+		
+		return marginFree > marginNeeded;
+	}
 
 
+	private void strategyTest(int index, String symbol) {
+		
+		Strategy longStrategy = StrategyBuilder.buildLongStrategy(index, series);
+		Strategy shortStrategy = StrategyBuilder.buildShortStrategy(index, series);
+		
+		ClosePriceIndicator closePrice = new ClosePriceIndicator(series);
+		System.out.println("Should enter for: "+ symbol+ " index:"+index+ " price:"+closePrice.getValue(index)+ " = "+ longStrategy.shouldEnter(index));
+		
+		
+		IchimokuTenkanSenIndicator tenkanSen = new IchimokuTenkanSenIndicator(series, 9);
+		IchimokuKijunSenIndicator kijunSen = new IchimokuKijunSenIndicator(series, 26);
+		IchimokuSenkouSpanAIndicator senkouSpanA = new IchimokuSenkouSpanAIndicator(series, tenkanSen, kijunSen);
+		IchimokuSenkouSpanBIndicator senkouSpanB = new IchimokuSenkouSpanBIndicator(series, 52);
+		IchimokuChikouSpanIndicator chikouSpan = new IchimokuChikouSpanIndicator(series, 26);
+		
+		Rule priceUnderCloud = new UnderIndicatorRule(closePrice, senkouSpanA)
+				.and(new UnderIndicatorRule(closePrice, senkouSpanB));
+		Rule priceCrossesKijunDownRule = new CrossedDownIndicatorRule(closePrice, kijunSen);
+		Rule chikouUnderPrice = new UnderIndicatorRule(new ConstantIndicator(series, chikouSpan.getValue(index-26)), closePrice.getValue(index-26));
+		Rule chikouOverPrice = new OverIndicatorRule(new ConstantIndicator(series, chikouSpan.getValue(index-26)), closePrice.getValue(index-26));
+		Rule signalA = priceCrossesKijunDownRule;
+		Rule signalB = new CrossedDownIndicatorRule(closePrice, senkouSpanB);
+
+		System.out.println("price under cloud satisfied: "+priceUnderCloud.isSatisfied(index));
+		System.out.println("price crosses down kijun: "+priceCrossesKijunDownRule.isSatisfied(index));
+		System.out.println("chikou under price: "+chikouUnderPrice.isSatisfied(index));
+		System.out.println("chikou over price: "+chikouOverPrice.isSatisfied(index));
+		System.out.println("price crosses down span b: "+new CrossedDownIndicatorRule(closePrice, senkouSpanB).isSatisfied(index));
+	}
+	
+	private void strategyTest2(int index) {
+		TradingRecord testTradingRecord = new BaseTradingRecord();
+		ClosePriceIndicator closePrice = new ClosePriceIndicator(series);
+		Rule signalOut = new TrailingStopLossRule(closePrice, DoubleNum.valueOf(0.5));
+		
+		boolean entered = testTradingRecord.enter(index, series.getBar(index).getClosePrice(), DoubleNum.valueOf(Configuration.volume));
+		
+		System.out.println("stop loss satisfied: "+signalOut.isSatisfied(series.getEndIndex(), testTradingRecord));
+
+	}
+	
+	
 	
 
 }
