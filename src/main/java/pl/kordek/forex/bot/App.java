@@ -110,17 +110,21 @@ public class App {
 			System.out.println();
 
 		} catch (XTBCommunicationException xtbEx) {
-			System.out.println("XTB Exception:" + xtbEx.getMessage());
+			System.out.println(new Date() +": XTB Exception:" + xtbEx.getMessage());
 		} catch (Exception e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
-			System.out.println("Exception:" + e.getStackTrace());
+			System.out.println(new Date() +": Exception:" + e.getStackTrace());
 			return;
 		}
 
 	}
 
 	private static boolean updateTradingRecord(int endIndex, String symbol, TradingRecord longTradingRecord, TradingRecord shortTradingRecord) {
+		if(null == longTradingRecord || null == shortTradingRecord) {
+			System.out.println(new Date() +": There shouldn't be null values in trading record map!");
+			return true;
+		}
 		//long trading record has a trade that is opened (not new), but it's not existing in XTB 
 		if(!longTradingRecord.getCurrentTrade().isNew() && !openedPositions.stream().map(e -> e.getSymbol()).anyMatch(e -> e.equals(symbol))) {
 			longTradingRecord.exit(endIndex);
