@@ -29,7 +29,7 @@ import org.ta4j.core.TradingRecord;
 import org.ta4j.core.Order.OrderType;
 
 import pl.kordek.forex.bot.constants.Configuration;
-import pl.kordek.forex.bot.exceptions.LoginFailedException;
+import pl.kordek.forex.bot.exceptions.SerializationFailedException;
 import pl.kordek.forex.bot.exceptions.XTBCommunicationException;
 import pro.xstore.api.message.codes.PERIOD_CODE;
 import pro.xstore.api.message.command.APICommandFactory;
@@ -82,16 +82,17 @@ public class App {
 
 			getOpenedPositions(connector);
 
-			boolean tRecordUpdateNeeded;
+			boolean longTRecordUpdateNeeded = false;
+			boolean shortTRecordUpdateNeeded = false;
 			int endIndex = baseBarSeriesMap.get(Configuration.oneFX[0]).getEndIndex();
 			for (String symbol : Configuration.instrumentsFX) {
 				SymbolResponse sr = APICommandFactory.executeSymbolCommand(connector, symbol);
 						
-				tRecordUpdateNeeded = updateTradingRecord(endIndex, symbol, longTradingRecordsMap.get(symbol), shortTradingRecordsMap.get(symbol));
+				longTRecordUpdateNeeded = updateTradingRecord(endIndex, symbol, longTradingRecordsMap.get(symbol));
+				shortTRecordUpdateNeeded = updateTradingRecord(endIndex, symbol, shortTradingRecordsMap.get(symbol));
 				
 				//something happened in xtb (like stop loss). trading record is updated but we skip this symbol
-				if(tRecordUpdateNeeded) {
-					System.out.println(new Date() + ": Trade record was outdated for symbol "+symbol+". Exited the trade");
+				if(longTRecordUpdateNeeded || shortTRecordUpdateNeeded) {
 					continue;
 				}
 				
@@ -114,25 +115,24 @@ public class App {
 		} catch (Exception e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
-			System.out.println(new Date() +": Exception:" + e.getStackTrace());
+			System.out.println(new Date() +": Other Exception:" + e.getMessage());
 			return;
 		}
 
 	}
 
-	private static boolean updateTradingRecord(int endIndex, String symbol, TradingRecord longTradingRecord, TradingRecord shortTradingRecord) {
-		if(null == longTradingRecord || null == shortTradingRecord) {
+	private static boolean updateTradingRecord(int endIndex, String symbol, TradingRecord tradingRecord) {
+		if(null == tradingRecord) {
 			System.out.println(new Date() +": There shouldn't be null values in trading record map!");
 			return true;
 		}
-		//long trading record has a trade that is opened (not new), but it's not existing in XTB 
-		if(!longTradingRecord.getCurrentTrade().isNew() && !openedPositions.stream().map(e -> e.getSymbol()).anyMatch(e -> e.equals(symbol))) {
-			longTradingRecord.exit(endIndex);
-			return true;
-		}
-		
-		if(!shortTradingRecord.getCurrentTrade().isNew() && !openedPositions.stream().map(e -> e.getSymbol()).anyMatch(e -> e.equals(symbol))) {
-			shortTradingRecord.exit(endIndex);
+		//check if trading record has a trade that is opened (not new), but it's not existing in XTB 
+		if(!tradingRecord.getCurrentTrade().isNew() && !openedPositions.stream().map(e -> e.getSymbol()).anyMatch(e -> e.equals(symbol))) {
+			System.out.println(new Date() + ": Trade record was outdated for symbol "+symbol+". Exiting the trade");
+			boolean exited = tradingRecord.exit(endIndex);
+			if(!exited) {
+				System.out.println(new Date() + ": Exit not successful");
+			}
 			return true;
 		}
 		
@@ -199,20 +199,23 @@ public class App {
 		openedPositions = tradeResponse.getTradeRecords();
 	}
 
-	private static void serializeTradingRecords(String tradingRecordsFileLocation)
-			throws FileNotFoundException, IOException {
+	private static void serializeTradingRecords(String tradingRecordsFileLocation) throws SerializationFailedException
+	{
 		List<HashMap<String, TradingRecord>> tradingRecordsMaps = new ArrayList<>();
 		tradingRecordsMaps.add(longTradingRecordsMap);
 		tradingRecordsMaps.add(shortTradingRecordsMap);
 		try (ObjectOutputStream outputStream = new ObjectOutputStream(
 				new FileOutputStream(tradingRecordsFileLocation))) {
 			outputStream.writeObject(tradingRecordsMaps);
+		} catch (IOException e) {
+			throw new SerializationFailedException("Serialization failed");
 		}
+		
 	}
 
 	@SuppressWarnings({ "unchecked", "unused" })
-	private static void deserializeTradingRecords(String tradingRecordsFileLocation)
-			throws IOException, ClassNotFoundException {
+	private static void deserializeTradingRecords(String tradingRecordsFileLocation) throws SerializationFailedException
+			 {
 		try (ObjectInputStream inputStream = new ObjectInputStream(new FileInputStream(tradingRecordsFileLocation))) {
 			List<HashMap<String, TradingRecord>> tradingRecordsMaps = (List<HashMap<String, TradingRecord>>) inputStream.readObject();
 			longTradingRecordsMap = tradingRecordsMaps.get(LONG_INDEX);
@@ -226,6 +229,10 @@ public class App {
 				shortTradingRecordsMap.put(symbol, new BaseTradingRecord(OrderType.SELL));
 				System.out.println("Init trading record for " + symbol);
 			}
+		} catch (IOException e) {
+			throw new SerializationFailedException("Deserialization failed. IO Exception");
+		} catch (ClassNotFoundException e) {
+			throw new SerializationFailedException("Derialization failed. Class not found exception");
 		}
 	}
 }

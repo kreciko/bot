@@ -67,7 +67,7 @@ public class StrategyBuilder {
 		Rule chikouUnderPrice = new UnderIndicatorRule(new ConstantIndicator(series, chikouSpan.getValue(endIndex-26)), closePrice.getValue(endIndex-26));
 
 		Rule signalA = priceCrossesKijunDownRule;
-		Rule signalB = new CrossedDownIndicatorRule(closePrice, senkouSpanB);
+		Rule signalB = new CrossedDownIndicatorRule(closePrice, senkouSpanA);
 
 		Rule signalOut = new TrailingStopLossRule(closePrice, DoubleNum.valueOf(0.5));
 		

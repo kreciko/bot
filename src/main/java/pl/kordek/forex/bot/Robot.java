@@ -1,5 +1,6 @@
 package pl.kordek.forex.bot;
 
+import java.util.Date;
 import java.util.List;
 
 import org.ta4j.core.BaseBarSeries;
@@ -76,13 +77,13 @@ public class Robot {
 			//check for short
 			checkForPositions(endIndex, symbol, shortStrategy, longStrategy, OrderType.SELL);
 			
-//			strategyTest(endIndex-8,symbol);
+	//		strategyTest(endIndex,symbol);
 	}
 	
 	private boolean checkForPositions(int endIndex, String symbol, Strategy baseStrategy, Strategy oppositeStrategy,
 			OrderType orderType) throws XTBCommunicationException {
 		TradingRecord tradingRecord = orderType == OrderType.BUY ? longTradingRecord : shortTradingRecord;
-		String strategyType = orderType == OrderType.BUY ? "Long" : "Short";
+		String strategyType = orderType == OrderType.BUY ? "LONG" : "SHORT";
 		boolean shouldEnter = baseStrategy.shouldEnter(endIndex, tradingRecord);
 		boolean shouldExit = baseStrategy.shouldExit(endIndex, tradingRecord);
 		boolean shouldOppositeEnter = oppositeStrategy.shouldEnter(endIndex);
@@ -90,28 +91,28 @@ public class Robot {
 
 		if (shouldEnter && !isSymbolOpenedXTB) {
 			if(!isEnoughMargin(symbol)) {
-				System.out.println(strategyType + " strategy should ENTER on " + symbol + " but not enough margin");
+				System.out.println(new Date() + ": "+strategyType + " strategy should ENTER on " + symbol + " but not enough margin");
 				return false;
 			}
-			System.out.println(strategyType + " strategy should ENTER on " + symbol);
+			System.out.println(new Date() + ": "+strategyType + " strategy should ENTER on " + symbol);
 			boolean entered = tradingRecord.enter(endIndex, series.getLastBar().getClosePrice(),
 					DoubleNum.valueOf(Configuration.volume));
 			if (entered) {
 				openPosition(symbol, orderType);
 				return true;
 			} else {
-				System.out.println("Didn't enter long position for: " + symbol);
+				System.out.println(new Date() + ": Didn't enter "+strategyType+" position for: " + symbol);
 			}
 		} else if ((shouldExit || shouldOppositeEnter) && isSymbolOpenedXTB) {
-			System.out.println(strategyType + " strategy should EXIT on " + symbol + ". Should this exit:" + shouldExit
+			System.out.println(new Date() + ": "+strategyType + " strategy should EXIT on " + symbol + ". Should this exit:" + shouldExit
 					+ ". Should opposite enter:" + shouldOppositeEnter);
-			boolean exited = longTradingRecord.exit(endIndex, series.getLastBar().getClosePrice(),
+			boolean exited = tradingRecord.exit(endIndex, series.getLastBar().getClosePrice(),
 					DoubleNum.valueOf(Configuration.volume));
 			if (exited) {
 				closePosition(symbol, orderType);
 				return true;
 			} else {
-				System.out.println("Didn't exit long position for: " + symbol);
+				System.out.println(new Date() + ": Didn't exit "+strategyType+" position for: " + symbol);
 			}
 		}
 		return false;
@@ -123,10 +124,10 @@ public class Robot {
 		try {
 			if(orderType.equals(OrderType.BUY)) enterBuyXTB();
 			else enterSellXTB();
-			System.out.println("Opened successfully");
+			System.out.println(new Date() + ": Opened in XTB successfully");
 		} catch (APICommandConstructionException | APIReplyParseException | APICommunicationException
 				| APIErrorResponse e1) {
-			System.out.println("Failed to open " + symbol);
+			System.out.println(new Date() + ": Failed to open " + symbol);
 			throw new XTBCommunicationException("Couldn't open the position in XTB: "+symbol);
 		}
 	}
@@ -135,10 +136,10 @@ public class Robot {
 		try {
 			if(orderType.equals(OrderType.BUY)) exitBuyXTB();
 			else exitSellXTB();
-			System.out.println("Closed successfully");
+			System.out.println(new Date() + ": Closed in XTB successfully");
 		} catch (APICommandConstructionException | APIReplyParseException | APICommunicationException
 				| APIErrorResponse e1) {
-			System.out.println("Failed to close " + symbol);
+			System.out.println(new Date() + ": Failed to close in XTB" + symbol);
 			throw new XTBCommunicationException("Couldn't close the position in XTB: "+symbol);
 		}
 	}
@@ -154,7 +155,6 @@ public class Robot {
 		TradeTransactionResponse tradeTransactionResponse = APICommandFactory.executeTradeTransactionCommand(connector,
 				ttInfoRecord);
 		
-		System.out.println("Opened buy position for: " + symbolRecord.getSymbol() + ". successfully");
 	}
 
 	private void exitBuyXTB() throws APICommandConstructionException, APIReplyParseException, APICommunicationException, APIErrorResponse {
@@ -165,8 +165,7 @@ public class Robot {
 
 		TradeTransactionResponse tradeTransactionResponse = APICommandFactory
 				.executeTradeTransactionCommand(connector, ttInfoRecord);
-		
-		System.out.println("Closed buy position for: " + tr.getSymbol() + ". successfully");
+
 	}
 	
 	private void enterSellXTB() throws APICommandConstructionException, APIReplyParseException, APICommunicationException, APIErrorResponse {
@@ -180,7 +179,6 @@ public class Robot {
 		TradeTransactionResponse tradeTransactionResponse = APICommandFactory.executeTradeTransactionCommand(connector,
 				ttInfoRecord);
 		
-		System.out.println("Opened sell position for: " + symbolRecord.getSymbol() + ". successfully");
 	}
 
 	private void exitSellXTB() throws APICommandConstructionException, APIReplyParseException, APICommunicationException, APIErrorResponse {
@@ -195,7 +193,6 @@ public class Robot {
 		TradeTransactionResponse tradeTransactionResponse = APICommandFactory
 				.executeTradeTransactionCommand(connector, ttInfoRecord);
 		
-		System.out.println("Closed sell position for: " + tr.getSymbol() + ". successfully");
 	}
 	
 	private Double getMarginFree() throws APICommandConstructionException, APIReplyParseException, APICommunicationException, APIErrorResponse {
