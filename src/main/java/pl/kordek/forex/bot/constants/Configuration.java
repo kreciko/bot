@@ -29,4 +29,7 @@ public interface Configuration {
     public static final Double volume = 0.1;
 
     public static final String sinceDate = "2019/12/24 15:30:00";
+    
+    public static final Double stopLossPrc = 0.5;
+    public static final Double takeProfitPrc = 0.5;
 }

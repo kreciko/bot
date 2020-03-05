@@ -25,8 +25,8 @@ import org.ta4j.core.Bar;
 import org.ta4j.core.BaseBar;
 import org.ta4j.core.BaseBarSeries;
 import org.ta4j.core.BaseTradingRecord;
-import org.ta4j.core.TradingRecord;
 import org.ta4j.core.Order.OrderType;
+import org.ta4j.core.TradingRecord;
 
 import pl.kordek.forex.bot.constants.Configuration;
 import pl.kordek.forex.bot.exceptions.SerializationFailedException;
@@ -128,7 +128,7 @@ public class App {
 		}
 		//check if trading record has a trade that is opened (not new), but it's not existing in XTB 
 		if(!tradingRecord.getCurrentTrade().isNew() && !openedPositions.stream().map(e -> e.getSymbol()).anyMatch(e -> e.equals(symbol))) {
-			System.out.println(new Date() + ": Trade record was outdated for symbol "+symbol+". Exiting the trade");
+			System.out.println(new Date() + ": Trade record was outdated for symbol "+symbol+". Updating the trade record");
 			boolean exited = tradingRecord.exit(endIndex);
 			if(!exited) {
 				System.out.println(new Date() + ": Exit not successful");

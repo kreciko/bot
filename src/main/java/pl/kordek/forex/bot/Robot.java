@@ -1,26 +1,15 @@
 package pl.kordek.forex.bot;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.Date;
 import java.util.List;
 
 import org.ta4j.core.BaseBarSeries;
-import org.ta4j.core.BaseTradingRecord;
 import org.ta4j.core.Order.OrderType;
-import org.ta4j.core.Rule;
 import org.ta4j.core.Strategy;
 import org.ta4j.core.TradingRecord;
-import org.ta4j.core.indicators.helpers.ClosePriceIndicator;
-import org.ta4j.core.indicators.helpers.ConstantIndicator;
-import org.ta4j.core.indicators.ichimoku.IchimokuChikouSpanIndicator;
-import org.ta4j.core.indicators.ichimoku.IchimokuKijunSenIndicator;
-import org.ta4j.core.indicators.ichimoku.IchimokuSenkouSpanAIndicator;
-import org.ta4j.core.indicators.ichimoku.IchimokuSenkouSpanBIndicator;
-import org.ta4j.core.indicators.ichimoku.IchimokuTenkanSenIndicator;
 import org.ta4j.core.num.DoubleNum;
-import org.ta4j.core.trading.rules.CrossedDownIndicatorRule;
-import org.ta4j.core.trading.rules.OverIndicatorRule;
-import org.ta4j.core.trading.rules.TrailingStopLossRule;
-import org.ta4j.core.trading.rules.UnderIndicatorRule;
 
 import pl.kordek.forex.bot.constants.Configuration;
 import pl.kordek.forex.bot.exceptions.XTBCommunicationException;
@@ -77,7 +66,10 @@ public class Robot {
 			//check for short
 			checkForPositions(endIndex, symbol, shortStrategy, longStrategy, OrderType.SELL);
 			
-	//		strategyTest(endIndex,symbol);
+//			StrategyTester tester = new StrategyTester(series);
+//			tester.strategyTest2(OrderType.SELL, endIndex-3);
+
+
 	}
 	
 	private boolean checkForPositions(int endIndex, String symbol, Strategy baseStrategy, Strategy oppositeStrategy,
@@ -87,7 +79,7 @@ public class Robot {
 		boolean shouldEnter = baseStrategy.shouldEnter(endIndex, tradingRecord);
 		boolean shouldExit = baseStrategy.shouldExit(endIndex, tradingRecord);
 		boolean shouldOppositeEnter = oppositeStrategy.shouldEnter(endIndex);
-		boolean isSymbolOpenedXTB = openedPositions.stream().map(e -> e.getSymbol()).anyMatch(e -> e.equals(symbol));
+		boolean isSymbolOpenedXTB = openedPositions.stream().map(e -> e.getSymbol()).anyMatch(e -> e.equals(symbol)); 
 
 		if (shouldEnter && !isSymbolOpenedXTB) {
 			if(!isEnoughMargin(symbol)) {
@@ -104,7 +96,7 @@ public class Robot {
 				System.out.println(new Date() + ": Didn't enter "+strategyType+" position for: " + symbol);
 			}
 		} else if ((shouldExit || shouldOppositeEnter) && isSymbolOpenedXTB) {
-			System.out.println(new Date() + ": "+strategyType + " strategy should EXIT on " + symbol + ". Should this exit:" + shouldExit
+			System.out.println(new Date() + ": "+strategyType + " strategy should EXIT on " + symbol + ". Exit strategy valid:" + shouldExit
 					+ ". Should opposite enter:" + shouldOppositeEnter);
 			boolean exited = tradingRecord.exit(endIndex, series.getLastBar().getClosePrice(),
 					DoubleNum.valueOf(Configuration.volume));
@@ -127,8 +119,8 @@ public class Robot {
 			System.out.println(new Date() + ": Opened in XTB successfully");
 		} catch (APICommandConstructionException | APIReplyParseException | APICommunicationException
 				| APIErrorResponse e1) {
-			System.out.println(new Date() + ": Failed to open " + symbol);
-			throw new XTBCommunicationException("Couldn't open the position in XTB: "+symbol);
+			System.out.println(new Date() + ": Failed to open in XTB" + symbol);
+			throw new XTBCommunicationException("Couldn't open the position in XTB due to communication problems: "+symbol);
 		}
 	}
 	
@@ -140,16 +132,16 @@ public class Robot {
 		} catch (APICommandConstructionException | APIReplyParseException | APICommunicationException
 				| APIErrorResponse e1) {
 			System.out.println(new Date() + ": Failed to close in XTB" + symbol);
-			throw new XTBCommunicationException("Couldn't close the position in XTB: "+symbol);
+			throw new XTBCommunicationException("Couldn't close the position in XTB due to communication problems: "+symbol);
 		}
 	}
 
 	private void enterBuyXTB() throws APICommandConstructionException, APIReplyParseException, APICommunicationException, APIErrorResponse {
 		SymbolRecord symbolRecord = symbolResponse.getSymbol();
-		//Double stopLoss = calculateStopLossInPips(sr).doubleValue();	
-		//Rule signalOut = new TrailingStopLossRule(closePrice, DoubleNum.valueOf(0.5));
+		Double stopLoss = calculateStopLoss(OrderType.BUY, Configuration.stopLossPrc).doubleValue();	
+		Double takeProfit = calculateTakeProfit(OrderType.BUY, Configuration.takeProfitPrc).doubleValue();
 		TradeTransInfoRecord ttInfoRecord = new TradeTransInfoRecord(TRADE_OPERATION_CODE.BUY,
-				TRADE_TRANSACTION_TYPE.OPEN, symbolRecord.getAsk(), 0.0, 0.0, symbolRecord.getSymbol(), Configuration.volume, 0L, "" , 0L);
+				TRADE_TRANSACTION_TYPE.OPEN, symbolRecord.getAsk(), stopLoss, takeProfit, symbolRecord.getSymbol(), Configuration.volume, 0L, "" , 0L);
 		
 
 		TradeTransactionResponse tradeTransactionResponse = APICommandFactory.executeTradeTransactionCommand(connector,
@@ -160,6 +152,8 @@ public class Robot {
 	private void exitBuyXTB() throws APICommandConstructionException, APIReplyParseException, APICommunicationException, APIErrorResponse {
 		TradeRecord tr = openedPositions.stream().filter(e-> e.getSymbol().equals(symbolResponse.getSymbol().getSymbol())).findAny()
                 .orElse(null);
+		if(tr==null) return;
+		
 		TradeTransInfoRecord ttInfoRecord = new TradeTransInfoRecord(TRADE_OPERATION_CODE.BUY,
 				TRADE_TRANSACTION_TYPE.CLOSE, tr.getClose_price(), tr.getSl(), tr.getTp(), tr.getSymbol(), tr.getVolume(), tr.getOrder(), tr.getComment(), tr.getExpiration());
 
@@ -170,10 +164,10 @@ public class Robot {
 	
 	private void enterSellXTB() throws APICommandConstructionException, APIReplyParseException, APICommunicationException, APIErrorResponse {
 		SymbolRecord symbolRecord = symbolResponse.getSymbol();
-		//Double stopLoss = calculateStopLossInPips(sr).doubleValue();	
-		
+		Double stopLoss = calculateStopLoss(OrderType.SELL, Configuration.stopLossPrc).doubleValue();
+		Double takeProfit = calculateTakeProfit(OrderType.SELL, Configuration.takeProfitPrc).doubleValue();
 		TradeTransInfoRecord ttInfoRecord = new TradeTransInfoRecord(TRADE_OPERATION_CODE.SELL,
-				TRADE_TRANSACTION_TYPE.OPEN, symbolRecord.getBid(), 0.0, 0.0, symbolRecord.getSymbol(), Configuration.volume, 0L, "" , 0L);
+				TRADE_TRANSACTION_TYPE.OPEN, symbolRecord.getBid(), stopLoss, takeProfit , symbolRecord.getSymbol(), Configuration.volume, 0L, "" , 0L);
 		
 
 		TradeTransactionResponse tradeTransactionResponse = APICommandFactory.executeTradeTransactionCommand(connector,
@@ -183,8 +177,7 @@ public class Robot {
 
 	private void exitSellXTB() throws APICommandConstructionException, APIReplyParseException, APICommunicationException, APIErrorResponse {
 		TradeRecord tr = openedPositions.stream().filter(e-> e.getSymbol().equals(symbolResponse.getSymbol().getSymbol())).findAny()
-                .orElse(null);
-		
+                .orElse(null);	
 		if(tr==null) return;
 		
 		TradeTransInfoRecord ttInfoRecord = new TradeTransInfoRecord(TRADE_OPERATION_CODE.SELL,
@@ -221,49 +214,26 @@ public class Robot {
 		return marginFree > marginNeeded;
 	}
 
-
-	private void strategyTest(int index, String symbol) {
-		
-		Strategy longStrategy = StrategyBuilder.buildLongStrategy(index, series);
-		Strategy shortStrategy = StrategyBuilder.buildShortStrategy(index, series);
-		
-		ClosePriceIndicator closePrice = new ClosePriceIndicator(series);
-		System.out.println("Should enter for: "+ symbol+ " index:"+index+ " price:"+closePrice.getValue(index)+ " = "+ longStrategy.shouldEnter(index));
-		
-		
-		IchimokuTenkanSenIndicator tenkanSen = new IchimokuTenkanSenIndicator(series, 9);
-		IchimokuKijunSenIndicator kijunSen = new IchimokuKijunSenIndicator(series, 26);
-		IchimokuSenkouSpanAIndicator senkouSpanA = new IchimokuSenkouSpanAIndicator(series, tenkanSen, kijunSen);
-		IchimokuSenkouSpanBIndicator senkouSpanB = new IchimokuSenkouSpanBIndicator(series, 52);
-		IchimokuChikouSpanIndicator chikouSpan = new IchimokuChikouSpanIndicator(series, 26);
-		
-		Rule priceUnderCloud = new UnderIndicatorRule(closePrice, senkouSpanA)
-				.and(new UnderIndicatorRule(closePrice, senkouSpanB));
-		Rule priceCrossesKijunDownRule = new CrossedDownIndicatorRule(closePrice, kijunSen);
-		Rule chikouUnderPrice = new UnderIndicatorRule(new ConstantIndicator(series, chikouSpan.getValue(index-26)), closePrice.getValue(index-26));
-		Rule chikouOverPrice = new OverIndicatorRule(new ConstantIndicator(series, chikouSpan.getValue(index-26)), closePrice.getValue(index-26));
-		Rule signalA = priceCrossesKijunDownRule;
-		Rule signalB = new CrossedDownIndicatorRule(closePrice, senkouSpanB);
-
-		System.out.println("price under cloud satisfied: "+priceUnderCloud.isSatisfied(index));
-		System.out.println("price crosses down kijun: "+priceCrossesKijunDownRule.isSatisfied(index));
-		System.out.println("chikou under price: "+chikouUnderPrice.isSatisfied(index));
-		System.out.println("chikou over price: "+chikouOverPrice.isSatisfied(index));
-		System.out.println("price crosses down span b: "+new CrossedDownIndicatorRule(closePrice, senkouSpanB).isSatisfied(index));
-	}
+	private BigDecimal calculateStopLoss(OrderType orderType, Double percentage){
+		Integer precisionNumber = symbolResponse.getSymbol().getPrecision();
+        BigDecimal stopLossRatioPrc = orderType == OrderType.BUY ? BigDecimal.valueOf(100L).subtract(BigDecimal.valueOf(percentage)) : BigDecimal.valueOf(100L).add(BigDecimal.valueOf(percentage));		
+		BigDecimal stopLossRatio = stopLossRatioPrc.divide(BigDecimal.valueOf(100L));
+        Double price = orderType == OrderType.BUY ? symbolResponse.getSymbol().getBid() : symbolResponse.getSymbol().getAsk();
+        BigDecimal priceBigDecimal = BigDecimal.valueOf(price);
+        BigDecimal stopLossPrice = priceBigDecimal.multiply(stopLossRatio).setScale(precisionNumber, RoundingMode.HALF_UP);
+        
+        return stopLossPrice;
+    }
 	
-	private void strategyTest2(int index) {
-		TradingRecord testTradingRecord = new BaseTradingRecord();
-		ClosePriceIndicator closePrice = new ClosePriceIndicator(series);
-		Rule signalOut = new TrailingStopLossRule(closePrice, DoubleNum.valueOf(0.5));
-		
-		boolean entered = testTradingRecord.enter(index, series.getBar(index).getClosePrice(), DoubleNum.valueOf(Configuration.volume));
-		
-		System.out.println("stop loss satisfied: "+signalOut.isSatisfied(series.getEndIndex(), testTradingRecord));
-
-	}
-	
-	
-	
+	private BigDecimal calculateTakeProfit(OrderType orderType, Double percentage){
+		Integer precisionNumber = symbolResponse.getSymbol().getPrecision();
+        BigDecimal takeProfitRatioPrc = orderType == OrderType.BUY ? BigDecimal.valueOf(100L).add(BigDecimal.valueOf(percentage)) : BigDecimal.valueOf(100L).subtract(BigDecimal.valueOf(percentage));		
+		BigDecimal takeProfitRatio = takeProfitRatioPrc.divide(BigDecimal.valueOf(100L));
+        Double price = orderType == OrderType.BUY ? symbolResponse.getSymbol().getAsk() : symbolResponse.getSymbol().getBid();
+        BigDecimal priceBigDecimal = BigDecimal.valueOf(price);
+        BigDecimal takeProfitPrice = priceBigDecimal.multiply(takeProfitRatio).setScale(precisionNumber, RoundingMode.HALF_UP);
+        
+        return takeProfitPrice;
+    }
 
 }
