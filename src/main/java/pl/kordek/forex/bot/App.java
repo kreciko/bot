@@ -41,6 +41,8 @@ import pro.xstore.api.message.records.TradeRecord;
 import pro.xstore.api.message.response.APIErrorResponse;
 import pro.xstore.api.message.response.ChartResponse;
 import pro.xstore.api.message.response.LoginResponse;
+import pro.xstore.api.message.response.MarginLevelResponse;
+import pro.xstore.api.message.response.MarginTradeResponse;
 import pro.xstore.api.message.response.SymbolResponse;
 import pro.xstore.api.message.response.TradesResponse;
 import pro.xstore.api.sync.Credentials;
@@ -81,6 +83,9 @@ public class App {
 			populateBaseBarSeriesMap(connector);
 
 			getOpenedPositions(connector);
+			
+			Double optimalVolume = getOptimalVolume(connector);
+			Robot.setVolume(optimalVolume);
 
 			boolean longTRecordUpdateNeeded = false;
 			boolean shortTRecordUpdateNeeded = false;
@@ -193,10 +198,32 @@ public class App {
 		durationMap.put(PERIOD_CODE.PERIOD_D1, Duration.ofDays(1));
 	}
 
-	public static void getOpenedPositions(SyncAPIConnector connector) throws APICommandConstructionException,
+	private static void getOpenedPositions(SyncAPIConnector connector) throws APICommandConstructionException,
 			APIReplyParseException, APICommunicationException, APIErrorResponse {
 		TradesResponse tradeResponse = APICommandFactory.executeTradesCommand(connector, true);
 		openedPositions = tradeResponse.getTradeRecords();
+	}
+	
+	private static double getOptimalVolume(SyncAPIConnector connector) throws XTBCommunicationException {
+		MarginLevelResponse marginLevelResponse;
+        try {
+			marginLevelResponse = APICommandFactory.executeMarginLevelCommand(connector);
+			BigDecimal balance = BigDecimal.valueOf(marginLevelResponse.getMargin_free()+marginLevelResponse.getMargin());
+			BigDecimal balancePerTrade = balance.divide(BigDecimal.valueOf(7L), 2, RoundingMode.HALF_UP);
+			
+			BigDecimal optimalVolume = BigDecimal.valueOf(1);
+			
+			MarginTradeResponse marginTradeResponse = APICommandFactory.executeMarginTradeCommand(connector, Configuration.oneFX[0], optimalVolume.doubleValue());
+			BigDecimal marginRatio = balancePerTrade.divide(BigDecimal.valueOf(marginTradeResponse.getMargin()) , 2, RoundingMode.HALF_UP);
+			
+			optimalVolume = optimalVolume.multiply(marginRatio).setScale(2, RoundingMode.HALF_UP);
+			return optimalVolume.doubleValue();
+			
+		} catch (APICommandConstructionException | APIReplyParseException | APICommunicationException
+				| APIErrorResponse e) {
+			throw new XTBCommunicationException("Couldn't get optimal volume");
+		}
+
 	}
 
 	private static void serializeTradingRecords(String tradingRecordsFileLocation) throws SerializationFailedException

@@ -41,6 +41,8 @@ public class Robot {
 	
 	private SyncAPIConnector connector = null;
 	
+	private static double volume = 0.05;
+	
 
 	public Robot(BaseBarSeries series, TradingRecord longTradingRecord, TradingRecord shortTradingRecord,
 			List<TradeRecord> openedPositions, SymbolResponse symbolResponse, SyncAPIConnector connector) {
@@ -82,13 +84,13 @@ public class Robot {
 		boolean isSymbolOpenedXTB = openedPositions.stream().map(e -> e.getSymbol()).anyMatch(e -> e.equals(symbol)); 
 
 		if (shouldEnter && !isSymbolOpenedXTB) {
-			if(!isEnoughMargin(symbol)) {
+			if(!isEnoughMargin()) {
 				System.out.println(new Date() + ": "+strategyType + " strategy should ENTER on " + symbol + " but not enough margin");
 				return false;
 			}
 			System.out.println(new Date() + ": "+strategyType + " strategy should ENTER on " + symbol);
 			boolean entered = tradingRecord.enter(endIndex, series.getLastBar().getClosePrice(),
-					DoubleNum.valueOf(Configuration.volume));
+					DoubleNum.valueOf(volume));
 			if (entered) {
 				openPosition(symbol, orderType);
 				return true;
@@ -99,7 +101,7 @@ public class Robot {
 			System.out.println(new Date() + ": "+strategyType + " strategy should EXIT on " + symbol + ". Exit strategy valid:" + shouldExit
 					+ ". Should opposite enter:" + shouldOppositeEnter);
 			boolean exited = tradingRecord.exit(endIndex, series.getLastBar().getClosePrice(),
-					DoubleNum.valueOf(Configuration.volume));
+					DoubleNum.valueOf(volume));
 			if (exited) {
 				closePosition(symbol, orderType);
 				return true;
@@ -141,7 +143,7 @@ public class Robot {
 		Double stopLoss = calculateStopLoss(OrderType.BUY, Configuration.stopLossPrc).doubleValue();	
 		Double takeProfit = calculateTakeProfit(OrderType.BUY, Configuration.takeProfitPrc).doubleValue();
 		TradeTransInfoRecord ttInfoRecord = new TradeTransInfoRecord(TRADE_OPERATION_CODE.BUY,
-				TRADE_TRANSACTION_TYPE.OPEN, symbolRecord.getAsk(), stopLoss, takeProfit, symbolRecord.getSymbol(), Configuration.volume, 0L, "" , 0L);
+				TRADE_TRANSACTION_TYPE.OPEN, symbolRecord.getAsk(), stopLoss, takeProfit, symbolRecord.getSymbol(), volume, 0L, "" , 0L);
 		
 
 		TradeTransactionResponse tradeTransactionResponse = APICommandFactory.executeTradeTransactionCommand(connector,
@@ -167,7 +169,7 @@ public class Robot {
 		Double stopLoss = calculateStopLoss(OrderType.SELL, Configuration.stopLossPrc).doubleValue();
 		Double takeProfit = calculateTakeProfit(OrderType.SELL, Configuration.takeProfitPrc).doubleValue();
 		TradeTransInfoRecord ttInfoRecord = new TradeTransInfoRecord(TRADE_OPERATION_CODE.SELL,
-				TRADE_TRANSACTION_TYPE.OPEN, symbolRecord.getBid(), stopLoss, takeProfit , symbolRecord.getSymbol(), Configuration.volume, 0L, "" , 0L);
+				TRADE_TRANSACTION_TYPE.OPEN, symbolRecord.getBid(), stopLoss, takeProfit , symbolRecord.getSymbol(), volume, 0L, "" , 0L);
 		
 
 		TradeTransactionResponse tradeTransactionResponse = APICommandFactory.executeTradeTransactionCommand(connector,
@@ -194,18 +196,18 @@ public class Robot {
         return marginLevelResponse.getMargin_free();
 	}
 	
-	private Double getMarginNeeded(String symbol) throws APICommandConstructionException, APIReplyParseException, APICommunicationException, APIErrorResponse {
+	private Double getMarginNeeded() throws APICommandConstructionException, APIReplyParseException, APICommunicationException, APIErrorResponse {
 		MarginTradeResponse marginTradeResponse;
-		marginTradeResponse = APICommandFactory.executeMarginTradeCommand(connector, symbol,Configuration.volume);
+		marginTradeResponse = APICommandFactory.executeMarginTradeCommand(connector, symbolResponse.getSymbol().getSymbol(), volume);
         return marginTradeResponse.getMargin();
 	}
 	
-	private boolean isEnoughMargin(String symbol) throws XTBCommunicationException {
+	private boolean isEnoughMargin() throws XTBCommunicationException {
 		Double marginFree = 0.0;
 		Double marginNeeded = 0.0;
 		try {
 			marginFree = getMarginFree();
-			marginNeeded = getMarginNeeded(symbol);
+			marginNeeded = getMarginNeeded();
 		} catch (APICommandConstructionException | APIReplyParseException | APICommunicationException
 				| APIErrorResponse e) {
 			throw new XTBCommunicationException("Couldn't execute is enough margin check");
@@ -235,5 +237,9 @@ public class Robot {
         
         return takeProfitPrice;
     }
+	
+	public static void setVolume(Double vol) {
+		volume = vol;
+	}
 
 }
