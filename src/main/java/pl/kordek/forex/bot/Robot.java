@@ -12,7 +12,10 @@ import org.ta4j.core.TradingRecord;
 import org.ta4j.core.num.DoubleNum;
 
 import pl.kordek.forex.bot.constants.Configuration;
+import pl.kordek.forex.bot.domain.BlackListOperation;
 import pl.kordek.forex.bot.exceptions.XTBCommunicationException;
+import pl.kordek.forex.bot.strategy.StrategyBuilder;
+import pl.kordek.forex.bot.strategy.StrategyTester;
 import pro.xstore.api.message.codes.TRADE_OPERATION_CODE;
 import pro.xstore.api.message.codes.TRADE_TRANSACTION_TYPE;
 import pro.xstore.api.message.command.APICommandFactory;
@@ -31,20 +34,26 @@ import pro.xstore.api.sync.SyncAPIConnector;
 
 public class Robot {
 
+	private final int TYPE_OF_OPERATION_BUY = 0;
+	private final int TYPE_OF_OPERATION_SELL = 1;
+	
 	private BaseBarSeries series = null;
 	private TradingRecord longTradingRecord = null;
 	private TradingRecord shortTradingRecord = null;
 	private SymbolResponse symbolResponse = null;
 	
+	//if null then the operation is not blacklisted
+	private BlackListOperation blackListOperation = null;
+	
 	//TradeRecord is a class from xtb API. Don't mistake with TradingRecord from ta4j
-	private List<TradeRecord> openedPositions;
+	private List<TradeRecord> openedPositions = null;
 	
 	private SyncAPIConnector connector = null;
 	
 	private static double volume = 0.05;
 	
 
-	public Robot(BaseBarSeries series, TradingRecord longTradingRecord, TradingRecord shortTradingRecord,
+	public Robot(BaseBarSeries series, TradingRecord longTradingRecord, TradingRecord shortTradingRecord, BlackListOperation bListOp,
 			List<TradeRecord> openedPositions, SymbolResponse symbolResponse, SyncAPIConnector connector) {
 		this.series = series;
 		this.openedPositions = openedPositions;
@@ -52,6 +61,7 @@ public class Robot {
 		this.connector = connector;
 		this.longTradingRecord = longTradingRecord;
 		this.shortTradingRecord = shortTradingRecord;
+		this.blackListOperation = bListOp;
 	}
 
 	public void runRobotIteration() throws XTBCommunicationException {
@@ -62,14 +72,21 @@ public class Robot {
 			Strategy longStrategy = StrategyBuilder.buildLongStrategy(endIndex, series);
 			Strategy shortStrategy = StrategyBuilder.buildShortStrategy(endIndex, series);
 			
-			//check for long
-			checkForPositions(endIndex, symbol, longStrategy, shortStrategy, OrderType.BUY);
+			//check for long. take blacklist into consideration
+			if(blackListOperation == null || blackListOperation.getTypeOfOperation() == TYPE_OF_OPERATION_SELL){
+				checkForPositions(endIndex, symbol, longStrategy, shortStrategy, OrderType.BUY);
+			}
 			
-			//check for short
-			checkForPositions(endIndex, symbol, shortStrategy, longStrategy, OrderType.SELL);
 			
-//			StrategyTester tester = new StrategyTester(series);
-//			tester.strategyTest2(OrderType.SELL, endIndex-3);
+			//check for short.  take blacklist into consideration
+			if(blackListOperation == null || blackListOperation.getTypeOfOperation() == TYPE_OF_OPERATION_BUY) {
+				checkForPositions(endIndex, symbol, shortStrategy, longStrategy, OrderType.SELL);
+			}
+			
+//			if(symbol.equals("GBPUSD")) {
+//				StrategyTester tester = new StrategyTester(series);
+//				tester.strategyTest(endIndex-8,"GBPUSD");
+//			}
 
 
 	}

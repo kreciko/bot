@@ -1,4 +1,4 @@
-package pl.kordek.forex.bot;
+package pl.kordek.forex.bot.strategy;
 
 import org.ta4j.core.BaseBarSeries;
 import org.ta4j.core.BaseTradingRecord;
@@ -28,7 +28,7 @@ public class StrategyTester {
 		this.series = series;
 	}
 
-	void strategyTest(int index, String symbol) {
+	public void strategyTest(int index, String symbol) {
 
 		Strategy longStrategy = StrategyBuilder.buildLongStrategy(index, series);
 		Strategy shortStrategy = StrategyBuilder.buildShortStrategy(index, series);
@@ -61,7 +61,7 @@ public class StrategyTester {
 				+ new CrossedDownIndicatorRule(closePrice, senkouSpanB).isSatisfied(index));
 	}
 
-	void strategyTest2( OrderType orderType, int index) {
+	public void strategyTest2( OrderType orderType, int index) {
 		TradingRecord testTradingRecord = new BaseTradingRecord(orderType);
 		ClosePriceIndicator closePrice = new ClosePriceIndicator(series);
 		Rule signalOut = new TrailingStopLossRule(closePrice, DoubleNum.valueOf(0.5));

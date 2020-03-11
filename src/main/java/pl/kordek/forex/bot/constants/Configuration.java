@@ -28,7 +28,7 @@ public interface Configuration {
     Integer chartPeriodInHours = 24;
     Double volume = 0.1;
 
-    String sinceDate = "2019/12/24 15:30:00";
+    String sinceDate = "2019/02/01 15:30:00";
     
     Double stopLossPrc = 0.5;
     Double takeProfitPrc = 0.5;

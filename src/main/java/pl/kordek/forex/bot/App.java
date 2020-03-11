@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.ta4j.core.Bar;
 import org.ta4j.core.BaseBar;
@@ -29,6 +30,8 @@ import org.ta4j.core.Order.OrderType;
 import org.ta4j.core.TradingRecord;
 
 import pl.kordek.forex.bot.constants.Configuration;
+import pl.kordek.forex.bot.domain.BlackListOperation;
+import pl.kordek.forex.bot.domain.RobotInfo;
 import pl.kordek.forex.bot.exceptions.SerializationFailedException;
 import pl.kordek.forex.bot.exceptions.XTBCommunicationException;
 import pro.xstore.api.message.codes.PERIOD_CODE;
@@ -44,9 +47,11 @@ import pro.xstore.api.message.response.LoginResponse;
 import pro.xstore.api.message.response.MarginLevelResponse;
 import pro.xstore.api.message.response.MarginTradeResponse;
 import pro.xstore.api.message.response.SymbolResponse;
+import pro.xstore.api.message.response.TradesHistoryResponse;
 import pro.xstore.api.message.response.TradesResponse;
 import pro.xstore.api.sync.Credentials;
 import pro.xstore.api.sync.SyncAPIConnector;
+
 
 /**
  * Hello world!
@@ -61,16 +66,19 @@ public class App {
 	private static HashMap<String, TradingRecord> longTradingRecordsMap = null;
 	private static HashMap<String, TradingRecord> shortTradingRecordsMap = null;
 	private static List<TradeRecord> openedPositions = new ArrayList<>();
+	private static HashMap<String,BlackListOperation> blackList = null;
+	private static int robotIteration = 0;
 
 	public static void main(String[] args) {
 		SyncAPIConnector connector = null;
 		buildDurationMap();
-		String tradingRecordsFileLocation = args.length == 0 ? "trading-record.bin" : args[0];
+		String robotInfoFileLocation = args.length == 0 ? "robot-info.bin" : args[0];
+		//String blackListFileLocation = args.length == 0 ? "black-list.bin" : args[0] + "black-list.bin";
 
 		try {
 			Thread.sleep(5000);
 
-			deserializeTradingRecords(tradingRecordsFileLocation);
+			deserializeFiles(robotInfoFileLocation);
 
 			connector = new SyncAPIConnector(Configuration.server);
 			LoginResponse loginResponse = APICommandFactory.executeLoginCommand(connector,
@@ -83,6 +91,10 @@ public class App {
 			populateBaseBarSeriesMap(connector);
 
 			getOpenedPositions(connector);
+			
+			//update black list based on stop losses from xtb. skip 1st iteration
+			if(robotIteration != 0)
+			updateBlackList(connector);
 			
 			Double optimalVolume = getOptimalVolume(connector);
 			Robot.setVolume(optimalVolume);
@@ -101,17 +113,20 @@ public class App {
 					continue;
 				}
 				
+				
 				Robot robot = new Robot(baseBarSeriesMap.get(symbol), longTradingRecordsMap.get(symbol),
-						shortTradingRecordsMap.get(symbol), openedPositions, sr, connector);
+						shortTradingRecordsMap.get(symbol), blackList.get(symbol), openedPositions, sr, connector);
 				robot.runRobotIteration();
 
 				Thread.sleep(500);
 			}
-
-			serializeTradingRecords(tradingRecordsFileLocation);
+			if(robotIteration != 0)
+			updateBlackList(connector);
+			
+			serializeFiles(robotInfoFileLocation);
 
 			getOpenedPositions(connector);
-			System.out.println(new Date() + ": Last robot iteration. Positions opened: "
+			System.out.println(new Date() + ": "+robotIteration+" robot iteration. Positions opened: "
 					+ openedPositions.stream().map(e -> e.getSymbol()).collect(toList()));
 			System.out.println();
 
@@ -140,8 +155,39 @@ public class App {
 			}
 			return true;
 		}
-		
 		return false;
+	}
+	
+	private static void updateBlackList(SyncAPIConnector connector) throws XTBCommunicationException {
+		Duration durationPeriod = durationMap.get(Configuration.candlePeriod);
+		long durationMilis = durationPeriod.toMillis();
+		long dateStart = new Date().getTime() - durationMilis;
+
+		TradesHistoryResponse tHistoryResponse;
+		try {
+			tHistoryResponse = APICommandFactory.executeTradesHistoryCommand(connector, dateStart, 0L);
+
+			for (TradeRecord t : tHistoryResponse.getTradeRecords()) {
+				if (t.getProfit() < 0 && !blackList.containsKey(t.getSymbol())) {
+					blackList.put(t.getSymbol(), new BlackListOperation(t.getSymbol(), t.getCmd(), t.getClose_time()));
+					System.out.println(new Date() + ": Putting symbol " + t.getSymbol() + " to the black list");
+				}
+			}
+
+			for (Map.Entry<String, BlackListOperation> pair : blackList.entrySet()) {
+				BlackListOperation t = pair.getValue();
+				Long timePassed = new Date().getTime() - t.getCloseTime();
+				Duration d = Duration.ofMillis(timePassed);
+				if (d.toDays() > 0L) {
+					blackList.remove(pair.getKey());
+					System.out.println(new Date() + ": Removing symbol " + pair.getKey() + " from the black list");
+				}
+			}
+
+		} catch (APICommandConstructionException | APICommunicationException | APIReplyParseException
+				| APIErrorResponse e1) {
+			throw new XTBCommunicationException("Couldn't get trade history from xtb");
+		}
 	}
 
 	private static BaseBarSeries convertRateInfoToBarSeries(List<RateInfoRecord> rateInfoRecords, String symbol) {
@@ -208,7 +254,7 @@ public class App {
 		MarginLevelResponse marginLevelResponse;
         try {
 			marginLevelResponse = APICommandFactory.executeMarginLevelCommand(connector);
-			BigDecimal balance = BigDecimal.valueOf(marginLevelResponse.getMargin_free()+marginLevelResponse.getMargin());
+			BigDecimal balance = BigDecimal.valueOf(marginLevelResponse.getBalance());
 			BigDecimal balancePerTrade = balance.divide(BigDecimal.valueOf(7L), 2, RoundingMode.HALF_UP);
 			
 			BigDecimal optimalVolume = BigDecimal.valueOf(1);
@@ -226,29 +272,36 @@ public class App {
 
 	}
 
-	private static void serializeTradingRecords(String tradingRecordsFileLocation) throws SerializationFailedException
+	private static void serializeFiles(String robotInfoFileLocation) throws SerializationFailedException
 	{
 		List<HashMap<String, TradingRecord>> tradingRecordsMaps = new ArrayList<>();
 		tradingRecordsMaps.add(longTradingRecordsMap);
 		tradingRecordsMaps.add(shortTradingRecordsMap);
-		try (ObjectOutputStream outputStream = new ObjectOutputStream(
-				new FileOutputStream(tradingRecordsFileLocation))) {
-			outputStream.writeObject(tradingRecordsMaps);
+		RobotInfo info = new RobotInfo(tradingRecordsMaps, blackList, robotIteration+1);
+
+		try (ObjectOutputStream outputStream = new ObjectOutputStream(new FileOutputStream(robotInfoFileLocation))) {
+			outputStream.writeObject(info);
 		} catch (IOException e) {
 			throw new SerializationFailedException("Serialization failed");
 		}
-		
 	}
 
 	@SuppressWarnings({ "unchecked", "unused" })
-	private static void deserializeTradingRecords(String tradingRecordsFileLocation) throws SerializationFailedException
-			 {
-		try (ObjectInputStream inputStream = new ObjectInputStream(new FileInputStream(tradingRecordsFileLocation))) {
-			List<HashMap<String, TradingRecord>> tradingRecordsMaps = (List<HashMap<String, TradingRecord>>) inputStream.readObject();
+	private static void deserializeFiles(String robotInfoFileLocation)
+			throws SerializationFailedException {
+
+		try (ObjectInputStream inputStream = new ObjectInputStream(new FileInputStream(robotInfoFileLocation))) {
+			
+			RobotInfo info = (RobotInfo) inputStream
+					.readObject();
+			List<HashMap<String, TradingRecord>> tradingRecordsMaps = info.getTradingRecordsMaps();
 			longTradingRecordsMap = tradingRecordsMaps.get(LONG_INDEX);
 			shortTradingRecordsMap = tradingRecordsMaps.get(SHORT_INDEX);
+			robotIteration = info.getRobotIteration();
+			blackList = info.getBlackList();
 		} catch (FileNotFoundException ex) {
-			System.out.println("trading-record.bin file not found. Will create new file");
+			System.out.println("robot-info.bin file not found. Will create new file");
+			blackList = new HashMap<String,BlackListOperation>();
 			longTradingRecordsMap = new HashMap<String, TradingRecord>();
 			shortTradingRecordsMap = new HashMap<String, TradingRecord>();
 			for (String symbol : Configuration.instrumentsFX) {
@@ -261,5 +314,6 @@ public class App {
 		} catch (ClassNotFoundException e) {
 			throw new SerializationFailedException("Derialization failed. Class not found exception");
 		}
+
 	}
 }
