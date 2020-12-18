@@ -1,193 +1,134 @@
 package pl.kordek.forex.bot.strategy;
 
+import java.util.Optional;
+
+import javax.naming.spi.DirStateFactory.Result;
+
 import org.ta4j.core.BaseBarSeries;
 import org.ta4j.core.BaseStrategy;
+import org.ta4j.core.Indicator;
 import org.ta4j.core.Rule;
 import org.ta4j.core.Strategy;
+import org.ta4j.core.Order.OrderType;
 import org.ta4j.core.indicators.SMAIndicator;
 import org.ta4j.core.indicators.helpers.ClosePriceIndicator;
 import org.ta4j.core.indicators.helpers.ConstantIndicator;
+import org.ta4j.core.indicators.helpers.HighPriceIndicator;
+import org.ta4j.core.indicators.helpers.HighestValueIndicator;
+import org.ta4j.core.indicators.helpers.LowPriceIndicator;
+import org.ta4j.core.indicators.helpers.LowestValueIndicator;
+import org.ta4j.core.indicators.helpers.PreviousValueIndicator;
 import org.ta4j.core.indicators.ichimoku.IchimokuChikouSpanIndicator;
 import org.ta4j.core.indicators.ichimoku.IchimokuKijunSenIndicator;
 import org.ta4j.core.indicators.ichimoku.IchimokuSenkouSpanAIndicator;
 import org.ta4j.core.indicators.ichimoku.IchimokuSenkouSpanBIndicator;
 import org.ta4j.core.indicators.ichimoku.IchimokuTenkanSenIndicator;
+import org.ta4j.core.indicators.candles;
+import org.ta4j.core.indicators.candles.BearishEngulfingIndicator;
+import org.ta4j.core.indicators.candles.ThreeBlackCrowsIndicator;
 import org.ta4j.core.num.DoubleNum;
 import org.ta4j.core.num.Num;
+import org.ta4j.core.trading.rules.BooleanIndicatorRule;
+import org.ta4j.core.trading.rules.BooleanRule;
 import org.ta4j.core.trading.rules.CrossedDownIndicatorRule;
 import org.ta4j.core.trading.rules.CrossedUpIndicatorRule;
+import org.ta4j.core.trading.rules.NotRule;
 import org.ta4j.core.trading.rules.OverIndicatorRule;
 import org.ta4j.core.trading.rules.TrailingStopLossRule;
 import org.ta4j.core.trading.rules.UnderIndicatorRule;
 
+
 public class StrategyBuilder {
 
-	public static boolean isEntryLongWithConfirmationSatisfied(BaseBarSeries series, int... index) {
-		//Try to get data from a previous bar for confirmation
+	public static double getNewStopLoss(BaseBarSeries series, OrderType orderType) {
 		if (series == null) {
 			throw new IllegalArgumentException("Series cannot be null");
 		}
+		ClosePriceIndicator closePrice = new ClosePriceIndicator(series);
+
+		LowestValueIndicator lowest = null;
+		HighestValueIndicator highest = null;
+		LowPriceIndicator lowPrice = null;
+		HighPriceIndicator highPrice = null;
+		if(orderType == OrderType.BUY) {
+			lowPrice = new LowPriceIndicator(series);
+			lowest = new LowestValueIndicator(lowPrice, 14);
+		} else {
+			highPrice = new HighPriceIndicator(series);
+			highest = new HighestValueIndicator(highPrice, 14);
+		}
+
+		Num result;
 		int endIndex = series.getEndIndex();
-		ClosePriceIndicator closePrice = new ClosePriceIndicator(series);
-		IchimokuTenkanSenIndicator tenkanSen = new IchimokuTenkanSenIndicator(series, 9);
-		IchimokuKijunSenIndicator kijunSen = new IchimokuKijunSenIndicator(series, 26);
-		IchimokuSenkouSpanAIndicator senkouSpanA = new IchimokuSenkouSpanAIndicator(series, tenkanSen, kijunSen);
-		IchimokuSenkouSpanBIndicator senkouSpanB = new IchimokuSenkouSpanBIndicator(series, 52);
-		IchimokuChikouSpanIndicator chikouSpan = new IchimokuChikouSpanIndicator(series, 26);
-		
-		Rule priceCrossesKijunUpRule = new CrossedUpIndicatorRule(closePrice, kijunSen);
-		Rule priceOverKijunRule = new OverIndicatorRule(closePrice, kijunSen);
-		Rule priceCrossesSpanAUpRule = new CrossedUpIndicatorRule(closePrice, senkouSpanA);
-		Rule chikouOverPriceRule = new OverIndicatorRule(new ConstantIndicator<>(series, chikouSpan.getValue(endIndex-26)), closePrice.getValue(endIndex-26));
-		Rule priceOverCloudRule = new OverIndicatorRule(closePrice, senkouSpanA)
-				.and(new OverIndicatorRule(closePrice, senkouSpanB));
-		boolean priceCrossedKijunUpLastBar = priceCrossesKijunUpRule.isSatisfied(endIndex-1);
-		boolean priceCrossesSpanAUpLastBar = priceCrossesSpanAUpRule.isSatisfied(endIndex-1);
-		boolean chikouOverPriceLastBar = chikouOverPriceRule.isSatisfied(endIndex);
-		boolean priceOverCloudLastBar = priceOverCloudRule.isSatisfied(endIndex);
-		boolean priceOverKijun = priceOverKijunRule.isSatisfied(endIndex);
-		boolean priceOverCloud = priceOverCloudRule.isSatisfied(endIndex);
-		
-		boolean lastBarRulesSatisified = (priceCrossedKijunUpLastBar || priceCrossesSpanAUpLastBar) && chikouOverPriceLastBar && priceOverCloudLastBar;
-		boolean currentRulesSatisfied = priceCrossedKijunUpLastBar ? priceOverKijun : priceOverCloud;
-		
-		return lastBarRulesSatisified && currentRulesSatisfied;
+		if(orderType == OrderType.BUY)
+		{
+			result = lowest.getValue(endIndex);
+			int lowestIndex = lowest.getLowestIndex(endIndex);
+
+			//dont return stoploss if the lowest value is the newest value. And if the lowest value is one of the rising candles
+			if( result.compareTo(lowPrice.getValue(endIndex)) == 0 || (!series.getBar(lowestIndex).isBearish() && !series.getBar(lowestIndex-1).isBearish())) {
+				return 0.0;
+			}
+		}
+		else {
+			result = highest.getValue(endIndex);
+			int highestIndex = highest.getHighestIndex(endIndex);
+
+			if( result.compareTo(highPrice.getValue(endIndex)) == 0 || (!series.getBar(highestIndex).isBullish() && !series.getBar(highestIndex-1).isBullish())) {
+				return 0.0;
+			}
+		}
+
+
+		return result.doubleValue();
 	}
-	
-	public static boolean isEntryShortWithConfirmationSatisfied(BaseBarSeries series) {
-		//Try to get data from a previous bar for confirmation
+
+	public static Strategy buildLongStrategy(int index, BaseBarSeries series, BaseBarSeries parentSeries) {
 		if (series == null) {
 			throw new IllegalArgumentException("Series cannot be null");
 		}
-		int endIndex = series.getEndIndex();
-		ClosePriceIndicator closePrice = new ClosePriceIndicator(series);
-		IchimokuTenkanSenIndicator tenkanSen = new IchimokuTenkanSenIndicator(series, 9);
-		IchimokuKijunSenIndicator kijunSen = new IchimokuKijunSenIndicator(series, 26);
-		IchimokuSenkouSpanAIndicator senkouSpanA = new IchimokuSenkouSpanAIndicator(series, tenkanSen, kijunSen);
-		IchimokuSenkouSpanBIndicator senkouSpanB = new IchimokuSenkouSpanBIndicator(series, 52);
-		IchimokuChikouSpanIndicator chikouSpan = new IchimokuChikouSpanIndicator(series, 26);
-		
-		Rule priceCrossesKijunDownRule = new CrossedDownIndicatorRule(closePrice, kijunSen);
-		Rule priceUnderKijunRule = new UnderIndicatorRule(closePrice, kijunSen);
-		Rule priceCrossesSpanADownRule = new CrossedDownIndicatorRule(closePrice, senkouSpanA);
-		Rule chikouUnderPriceRule = new UnderIndicatorRule(new ConstantIndicator<>(series, chikouSpan.getValue(endIndex-26)), closePrice.getValue(endIndex-26));
-		Rule priceUnderCloudRule = new UnderIndicatorRule(closePrice, senkouSpanA)
-				.and(new UnderIndicatorRule(closePrice, senkouSpanB));
-		boolean priceCrossedKijunDownLastBar = priceCrossesKijunDownRule.isSatisfied(endIndex-1);
-		boolean priceCrossesSpanADownLastBar = priceCrossesSpanADownRule.isSatisfied(endIndex-1);
-		boolean chikouUnderPriceLastBar = chikouUnderPriceRule.isSatisfied(endIndex);
-		boolean priceUnderCloudLastBar = priceUnderCloudRule.isSatisfied(endIndex);
-		boolean priceUnderKijun = priceUnderKijunRule.isSatisfied(endIndex);
-		boolean priceUnderCloud = priceUnderCloudRule.isSatisfied(endIndex);
-		
-		boolean lastBarRulesSatisified = (priceCrossedKijunDownLastBar || priceCrossesSpanADownLastBar) && chikouUnderPriceLastBar && priceUnderCloudLastBar;
-		boolean currentRulesSatisfied = priceCrossedKijunDownLastBar ? priceUnderKijun : priceUnderCloud;
-		
-		return lastBarRulesSatisified && currentRulesSatisfied;
-	}
-	
-	public static Strategy buildLongStrategy(int index, BaseBarSeries series) {
-		if (series == null) {
-			throw new IllegalArgumentException("Series cannot be null");
-		}
-		
-		
-		ClosePriceIndicator closePrice = new ClosePriceIndicator(series);
-		
-		IchimokuTenkanSenIndicator tenkanSen = new IchimokuTenkanSenIndicator(series, 9);
-		IchimokuKijunSenIndicator kijunSen = new IchimokuKijunSenIndicator(series, 26);
-		IchimokuSenkouSpanAIndicator senkouSpanA = new IchimokuSenkouSpanAIndicator(series, tenkanSen, kijunSen);
-		IchimokuSenkouSpanBIndicator senkouSpanB = new IchimokuSenkouSpanBIndicator(series, 52);
-		IchimokuChikouSpanIndicator chikouSpan = new IchimokuChikouSpanIndicator(series, 26);
 
-		Rule priceCrossesKijunUpRule = new CrossedUpIndicatorRule(closePrice, kijunSen);
-		
-		Rule priceOverCloud = new OverIndicatorRule(closePrice, senkouSpanA)
-				.and(new OverIndicatorRule(closePrice, senkouSpanB));
-		Rule priceUnderCloud = new UnderIndicatorRule(closePrice, senkouSpanA)
-				.and(new UnderIndicatorRule(closePrice, senkouSpanB));
-		
-		//chikou span has empty values for 26 bars
-		Rule chikouOverPrice = new OverIndicatorRule(new ConstantIndicator<>(series, chikouSpan.getValue(index-26)), closePrice.getValue(index-26));
+		IchimokuRules ichimokuRules = new IchimokuRules(index, series, parentSeries);
+		CandlesRules candlesRules = new CandlesRules(series);
 
-		
-		Rule signalA = priceCrossesKijunUpRule;
-		Rule signalB = new CrossedUpIndicatorRule(closePrice, senkouSpanA);
+		//RULES IN
+		Rule chikouOverPrice = ichimokuRules.getChikouOverPrice();
+		Rule priceOverCloud = ichimokuRules.getPriceOverCloud();
+		Rule trendBullishConfirmed = ichimokuRules.getTrendBullishConfirmed();
+		Rule tenkanCrossesKijunUp = ichimokuRules.getTenkanCrossesKijunUpRule();
 
-		Rule signalOutA = new TrailingStopLossRule(closePrice, DoubleNum.valueOf(0.5));
-		Rule signalOutB = priceUnderCloud;
-		
-		Rule entryRule = chikouOverPrice.and(priceOverCloud).and(signalA.or(signalB));
-		Rule exitRule = signalOutA;
+		//RULES OUT
+		Rule tenkanUnderCloud = ichimokuRules.getTenkanSenUnderCloud();
+		Rule bearishEngulfing = candlesRules.getBearishEngulfingRule();
+		Rule threeBlackCrows = candlesRules.getThreeBlackCrowsRule();
+
+		Rule entryRule = chikouOverPrice.and(priceOverCloud).and(trendBullishConfirmed)
+				.and(tenkanCrossesKijunUp);
+		Rule exitRule = bearishEngulfing.or(threeBlackCrows);
 		return new BaseStrategy(entryRule, exitRule);
 	}
-	
-	public static Strategy buildShortStrategy(int endIndex, BaseBarSeries series) {
+
+	public static Strategy buildShortStrategy(int index, BaseBarSeries series, BaseBarSeries parentSeries) {
 		if (series == null) {
 			throw new IllegalArgumentException("Series cannot be null");
 		}
-		ClosePriceIndicator closePrice = new ClosePriceIndicator(series);
-		IchimokuTenkanSenIndicator tenkanSen = new IchimokuTenkanSenIndicator(series, 9);
-		IchimokuKijunSenIndicator kijunSen = new IchimokuKijunSenIndicator(series, 26);
-		IchimokuSenkouSpanAIndicator senkouSpanA = new IchimokuSenkouSpanAIndicator(series, tenkanSen, kijunSen);
-		IchimokuSenkouSpanBIndicator senkouSpanB = new IchimokuSenkouSpanBIndicator(series, 52);
-		IchimokuChikouSpanIndicator chikouSpan = new IchimokuChikouSpanIndicator(series, 26);
 
-		Rule priceCrossesKijunDownRule = new CrossedDownIndicatorRule(closePrice, kijunSen);
-		Rule priceUnderCloud = new UnderIndicatorRule(closePrice, senkouSpanA)
-				.and(new UnderIndicatorRule(closePrice, senkouSpanB));
-		Rule priceOverCloud = new OverIndicatorRule(closePrice, senkouSpanA)
-				.and(new OverIndicatorRule(closePrice, senkouSpanB));
+		IchimokuRules ichimokuRules = new IchimokuRules(index, series, parentSeries);
+		CandlesRules candlesRules = new CandlesRules(series);
 
-		// chikou span has empty values for 26 bars
-		Rule chikouUnderPrice = new UnderIndicatorRule(
-				new ConstantIndicator<>(series, chikouSpan.getValue(endIndex - 26)),
-				closePrice.getValue(endIndex - 26));
+		//RULES IN
+		Rule chikouUnderPrice = ichimokuRules.getChikouUnderPrice();
+		Rule priceUnderCloud = ichimokuRules.getPriceUnderCloud();
+		Rule trendBearishConfirmed = ichimokuRules.getTrendBearishConfirmed();
+		Rule tenkanCrossesKijunDown = ichimokuRules.getTenkanCrossesKijunDownRule();
 
-		// Try to get data from a previous bar for confirmation
-		BaseBarSeries seriesMinusOne = series.getSubSeries(0, series.getEndIndex() - 1);
-		ClosePriceIndicator closePriceMinusOne = new ClosePriceIndicator(seriesMinusOne);
-		IchimokuKijunSenIndicator kijunSenMinusOne = new IchimokuKijunSenIndicator(seriesMinusOne, 26);
-		IchimokuTenkanSenIndicator tenkanSenMinusOne = new IchimokuTenkanSenIndicator(seriesMinusOne, 9);
-		IchimokuSenkouSpanAIndicator senkouSpanAMinusOne = new IchimokuSenkouSpanAIndicator(seriesMinusOne,
-				tenkanSenMinusOne, kijunSenMinusOne);
-		IchimokuSenkouSpanBIndicator senkouSpanBMinusOne = new IchimokuSenkouSpanBIndicator(seriesMinusOne, 52);
-		Rule priceCrossesKijunDownMinusOneRule = new CrossedDownIndicatorRule(closePriceMinusOne, kijunSenMinusOne);
-		Rule priceUnderKijunNowRule = new UnderIndicatorRule(closePrice, kijunSen);
+		//RULES OUT
+		Rule tenkanOverCloud = ichimokuRules.getTenkanSenOverCloud();
+		Rule bullishEngulfing = candlesRules.getBullishEngulfingRule();
+		Rule threeWhiteSoldiers = candlesRules.getThreeWhiteSoldiersRule();
 
-		Rule signalANew = priceCrossesKijunDownMinusOneRule.and(priceUnderKijunNowRule);
-		Rule signalBNew = new CrossedDownIndicatorRule(closePriceMinusOne, senkouSpanAMinusOne);
-
-		Rule signalA = priceCrossesKijunDownRule;
-		Rule signalB = new CrossedDownIndicatorRule(closePrice, senkouSpanA);
-
-		Rule signalOutA = new TrailingStopLossRule(closePrice, DoubleNum.valueOf(0.5));
-		Rule signalOutB = priceOverCloud;
-
-		Rule entryRule = chikouUnderPrice.and(priceUnderCloud).and(signalA.or(signalB));
-		Rule exitRule = signalOutA;
+		Rule entryRule = chikouUnderPrice.and(priceUnderCloud).and(trendBearishConfirmed).and(tenkanCrossesKijunDown);
+		Rule exitRule = bullishEngulfing.or(threeWhiteSoldiers);
 		return new BaseStrategy(entryRule, exitRule);
-	}
-	
-	
-	public static Strategy buildStrategySMA(BaseBarSeries series) {
-		if (series == null) {
-			throw new IllegalArgumentException("Series cannot be null");
-		}
-		ClosePriceIndicator closePrice = new ClosePriceIndicator(series);
-
-		SMAIndicator shortSma = new SMAIndicator(closePrice, 9);
-		SMAIndicator longSma = new SMAIndicator(closePrice, 26);
-
-		Rule entryRule = null;
-		Rule exitRule = null;
-
-		entryRule = new CrossedUpIndicatorRule(shortSma, longSma);
-		exitRule = new CrossedDownIndicatorRule(shortSma, longSma);
-
-		Rule signalOut = new TrailingStopLossRule(closePrice, DoubleNum.valueOf(0.01));
-		
-
-		return new BaseStrategy(entryRule, signalOut);
 	}
 }
