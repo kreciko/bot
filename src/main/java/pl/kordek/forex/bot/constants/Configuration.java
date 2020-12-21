@@ -15,7 +15,7 @@ public interface Configuration {
 	String username = demoUsrName;
 	String password = demoPassword;
 
-	String[] oneFX = {"NZDUSD"};
+	String[] oneFX = {"USDCHF"};
 	String[] customFX = {"EURUSD", "USDCHF"};
 	String[] halfMajorFX = {"AUDUSD","EURGBP","EURJPY","EURUSD","GBPCHF","GBPJPY"} ;
 	String[] majorFX = {"AUDUSD","EURCHF","EURGBP","EURJPY","EURUSD","GBPCHF","GBPJPY","GBPUSD","NZDUSD","USDCAD","USDCHF","USDJPY"};
@@ -30,7 +30,7 @@ public interface Configuration {
     Integer chartPeriodInHours = 24;
     Double volume = 0.1;
 
-    String sinceDate = "2019/02/18 15:30:00";
+    String sinceDate = "2020/08/01 15:30:00";
 
     //multiplicand of stoploss to estimate take profit
     Double takeProfitVsStopLossCoeff = 1.0;

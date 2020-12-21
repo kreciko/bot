@@ -87,7 +87,7 @@ public class Robot {
 			}
 
 //			StrategyTester tester = new StrategyTester(series, parentSeries);
-//			tester.strategyTest(endIndex-14, symbol);
+//			tester.strategyTest(endIndex-1, symbol);
 
 	}
 
@@ -184,8 +184,9 @@ public class Robot {
 			takeProfit = calculateTakeProfit(orderType, stopLossBD).doubleValue();
 		}
 
+		//set take profit to 0 for now
 		TradeTransInfoRecord ttInfoRecord = new TradeTransInfoRecord(operationCode,
-				TRADE_TRANSACTION_TYPE.OPEN, symbolRecord.getBid(), stopLoss , takeProfit , symbolRecord.getSymbol(), volume, 0L, "" , 0L);
+				TRADE_TRANSACTION_TYPE.OPEN, symbolRecord.getBid(), stopLoss , 0.0 , symbolRecord.getSymbol(), volume, 0L, "" , 0L);
 
 		TradeTransactionResponse tradeTransactionResponse = APICommandFactory.executeTradeTransactionCommand(connector,
 				ttInfoRecord);

@@ -9,6 +9,7 @@ import org.ta4j.core.Order.OrderType;
 import org.ta4j.core.indicators.candles.BullishEngulfingIndicator;
 import org.ta4j.core.indicators.helpers.ClosePriceIndicator;
 import org.ta4j.core.indicators.helpers.ConstantIndicator;
+import org.ta4j.core.indicators.helpers.OpenPriceIndicator;
 import org.ta4j.core.indicators.ichimoku.IchimokuChikouSpanIndicator;
 import org.ta4j.core.indicators.ichimoku.IchimokuKijunSenIndicator;
 import org.ta4j.core.indicators.ichimoku.IchimokuSenkouSpanAIndicator;
@@ -37,6 +38,7 @@ public class StrategyTester {
 		Strategy longStrategy = StrategyBuilder.buildLongStrategy(index, series, parentSeries);
 		Strategy shortStrategy = StrategyBuilder.buildShortStrategy(index, series, parentSeries);
 
+		OpenPriceIndicator openPrice = new OpenPriceIndicator(series);
 		ClosePriceIndicator closePrice = new ClosePriceIndicator(series);
 		System.out.println("Should enter for: " + symbol + " index:" + index + " price:" + closePrice.getValue(index)
 				+ " = " + shortStrategy.shouldEnter(index));
@@ -49,6 +51,8 @@ public class StrategyTester {
 
 		Rule priceUnderCloud = new UnderIndicatorRule(closePrice, senkouSpanA)
 				.and(new UnderIndicatorRule(closePrice, senkouSpanB));
+		Rule priceOverCloud = new OverIndicatorRule(closePrice, senkouSpanA)
+				.and(new OverIndicatorRule(closePrice, senkouSpanB));
 		Rule priceCrossesKijunDownRule = new CrossedDownIndicatorRule(closePrice, kijunSen);
 		Rule chikouUnderPrice = new UnderIndicatorRule(new ConstantIndicator(series, chikouSpan.getValue(index - 26)),
 				closePrice.getValue(index - 26));
@@ -56,21 +60,26 @@ public class StrategyTester {
 				closePrice.getValue(index - 26));
 		Rule signalA = priceCrossesKijunDownRule;
 		Rule signalB = new CrossedDownIndicatorRule(closePrice, senkouSpanB);
-		
+
 		IchimokuTenkanSenIndicator tenkanSenParent = new IchimokuTenkanSenIndicator(parentSeries, 9);
 		IchimokuKijunSenIndicator kijunSenParent = new IchimokuKijunSenIndicator(parentSeries, 26);
 		IchimokuSenkouSpanAIndicator senkouSpanAParent = new IchimokuSenkouSpanAIndicator(parentSeries, tenkanSenParent, kijunSenParent);
 		IchimokuSenkouSpanBIndicator senkouSpanBParent = new IchimokuSenkouSpanBIndicator(parentSeries, 52);
 		Rule parentCloudBearish = new UnderIndicatorRule(senkouSpanAParent, senkouSpanBParent);
-		
+		Rule parentCloudBullish = new OverIndicatorRule(senkouSpanAParent, senkouSpanBParent);
+
 		BullishEngulfingIndicator engulfingCandle = new BullishEngulfingIndicator(series);
 		Rule engulfingCandleExist = new BooleanIndicatorRule(engulfingCandle);
 
+		IchimokuRules ichimokuRules = new IchimokuRules(index, series, parentSeries);
+		Rule tenkanCrossesKijunUp = ichimokuRules.getTenkanCrossesKijunUpRule();
+
+		System.out.println("symbol: " + symbol);
 		System.out.println("bullish engulfing: " + engulfingCandleExist.isSatisfied(index));
-		System.out.println("price under cloud satisfied: " + priceUnderCloud.isSatisfied(index));
-		System.out.println("bearish trend confirmed by parent: " + parentCloudBearish.isSatisfied(parentSeries.getEndIndex()));
-		System.out.println("price crosses down kijun: " + priceCrossesKijunDownRule.isSatisfied(index));
-		System.out.println("chikou under price: " + chikouUnderPrice.isSatisfied(index));
+		System.out.println("price over cloud satisfied: " + priceOverCloud.isSatisfied(index));
+		System.out.println("bullish trend confirmed by parent: " + parentCloudBullish.isSatisfied(parentSeries.getEndIndex()));
+		System.out.println("Tenkan crosses kijun up: " + tenkanCrossesKijunUp.isSatisfied(index));
+//		System.out.println("chikou under price: " + chikouUnderPrice.isSatisfied(index));
 		System.out.println("chikou over price: " + chikouOverPrice.isSatisfied(index));
 		System.out.println("price crosses down span b: "
 				+ new CrossedDownIndicatorRule(closePrice, senkouSpanB).isSatisfied(index));

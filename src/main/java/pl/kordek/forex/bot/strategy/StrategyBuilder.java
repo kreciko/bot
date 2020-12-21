@@ -1,41 +1,18 @@
 package pl.kordek.forex.bot.strategy;
 
-import java.util.Optional;
-
-import javax.naming.spi.DirStateFactory.Result;
-
 import org.ta4j.core.BaseBarSeries;
 import org.ta4j.core.BaseStrategy;
-import org.ta4j.core.Indicator;
+import org.ta4j.core.Order.OrderType;
 import org.ta4j.core.Rule;
 import org.ta4j.core.Strategy;
-import org.ta4j.core.Order.OrderType;
-import org.ta4j.core.indicators.SMAIndicator;
 import org.ta4j.core.indicators.helpers.ClosePriceIndicator;
-import org.ta4j.core.indicators.helpers.ConstantIndicator;
 import org.ta4j.core.indicators.helpers.HighPriceIndicator;
 import org.ta4j.core.indicators.helpers.HighestValueIndicator;
 import org.ta4j.core.indicators.helpers.LowPriceIndicator;
 import org.ta4j.core.indicators.helpers.LowestValueIndicator;
-import org.ta4j.core.indicators.helpers.PreviousValueIndicator;
-import org.ta4j.core.indicators.ichimoku.IchimokuChikouSpanIndicator;
-import org.ta4j.core.indicators.ichimoku.IchimokuKijunSenIndicator;
-import org.ta4j.core.indicators.ichimoku.IchimokuSenkouSpanAIndicator;
-import org.ta4j.core.indicators.ichimoku.IchimokuSenkouSpanBIndicator;
-import org.ta4j.core.indicators.ichimoku.IchimokuTenkanSenIndicator;
-import org.ta4j.core.indicators.candles;
-import org.ta4j.core.indicators.candles.BearishEngulfingIndicator;
-import org.ta4j.core.indicators.candles.ThreeBlackCrowsIndicator;
-import org.ta4j.core.num.DoubleNum;
 import org.ta4j.core.num.Num;
-import org.ta4j.core.trading.rules.BooleanIndicatorRule;
-import org.ta4j.core.trading.rules.BooleanRule;
-import org.ta4j.core.trading.rules.CrossedDownIndicatorRule;
-import org.ta4j.core.trading.rules.CrossedUpIndicatorRule;
-import org.ta4j.core.trading.rules.NotRule;
-import org.ta4j.core.trading.rules.OverIndicatorRule;
-import org.ta4j.core.trading.rules.TrailingStopLossRule;
-import org.ta4j.core.trading.rules.UnderIndicatorRule;
+import org.ta4j.core.trading.rules.IsFallingRule;
+import org.ta4j.core.trading.rules.IsRisingRule;
 
 
 public class StrategyBuilder {
@@ -87,7 +64,7 @@ public class StrategyBuilder {
 		if (series == null) {
 			throw new IllegalArgumentException("Series cannot be null");
 		}
-
+		ClosePriceIndicator closePrice = new ClosePriceIndicator(series);
 		IchimokuRules ichimokuRules = new IchimokuRules(index, series, parentSeries);
 		CandlesRules candlesRules = new CandlesRules(series);
 
@@ -99,12 +76,13 @@ public class StrategyBuilder {
 
 		//RULES OUT
 		Rule tenkanUnderCloud = ichimokuRules.getTenkanSenUnderCloud();
-		Rule bearishEngulfing = candlesRules.getBearishEngulfingRule();
-		Rule threeBlackCrows = candlesRules.getThreeBlackCrowsRule();
+		Rule bearishEngulfingPrevRule = candlesRules.getBearishEngulfingPrevRule();
+		// we check if the current candle is bearish
+		Rule isFallingRule = new IsFallingRule(closePrice, 2);
 
 		Rule entryRule = chikouOverPrice.and(priceOverCloud).and(trendBullishConfirmed)
 				.and(tenkanCrossesKijunUp);
-		Rule exitRule = bearishEngulfing.or(threeBlackCrows);
+		Rule exitRule = bearishEngulfingPrevRule.and(isFallingRule);
 		return new BaseStrategy(entryRule, exitRule);
 	}
 
@@ -112,7 +90,7 @@ public class StrategyBuilder {
 		if (series == null) {
 			throw new IllegalArgumentException("Series cannot be null");
 		}
-
+		ClosePriceIndicator closePrice = new ClosePriceIndicator(series);
 		IchimokuRules ichimokuRules = new IchimokuRules(index, series, parentSeries);
 		CandlesRules candlesRules = new CandlesRules(series);
 
@@ -124,11 +102,11 @@ public class StrategyBuilder {
 
 		//RULES OUT
 		Rule tenkanOverCloud = ichimokuRules.getTenkanSenOverCloud();
-		Rule bullishEngulfing = candlesRules.getBullishEngulfingRule();
-		Rule threeWhiteSoldiers = candlesRules.getThreeWhiteSoldiersRule();
+		Rule bullishEngulfingPrevRule = candlesRules.getBullishEngulfingPrevRule();
+		Rule isRisingRule = new IsRisingRule(closePrice, 2);
 
 		Rule entryRule = chikouUnderPrice.and(priceUnderCloud).and(trendBearishConfirmed).and(tenkanCrossesKijunDown);
-		Rule exitRule = bullishEngulfing.or(threeWhiteSoldiers);
+		Rule exitRule = bullishEngulfingPrevRule.and(isRisingRule);
 		return new BaseStrategy(entryRule, exitRule);
 	}
 }
