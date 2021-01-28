@@ -19,8 +19,11 @@ import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
 
 import org.ta4j.core.Bar;
 import org.ta4j.core.BaseBar;
@@ -63,7 +66,7 @@ public class App {
 
 	private static HashMap<PERIOD_CODE, Duration> durationMap = new HashMap<>();
 	private static HashMap<String, BaseBarSeries> baseBarSeriesMap = new HashMap<>();
-	private static HashMap<String, BaseBarSeries> baseBarSeriesParentMap = new HashMap<>();
+	private static HashMap<String, BaseBarSeries> baseBarSeriesHelperMap = new HashMap<>();
 	private static HashMap<String, TradingRecord> longTradingRecordsMap = null;
 	private static HashMap<String, TradingRecord> shortTradingRecordsMap = null;
 	private static List<TradeRecord> openedPositions = new ArrayList<>();
@@ -71,12 +74,21 @@ public class App {
 	private static int robotIteration = 0;
 
 	public static void main(String[] args) {
+
+		if(!Configuration.runBot) {
+			return;
+		}
+
 		SyncAPIConnector connector = null;
 		buildDurationMap();
 		String robotInfoFileLocation = args.length == 0 ? "robot-info.bin" : args[0];
 
 		try {
-			Thread.sleep(1000);
+			//if we don't run test then wait longer for the data to be updated in the XTB system
+			if(Configuration.runTest)
+				Thread.sleep(1000);
+			else
+				Thread.sleep(120000);
 
 			deserializeFiles(robotInfoFileLocation);
 
@@ -92,14 +104,14 @@ public class App {
 
 			getOpenedPositions(connector);
 
-			Double optimalVolume = getOptimalVolume(connector);
-			Robot.setVolume(optimalVolume);
+
 
 			boolean longTRecordUpdateNeeded = false;
 			boolean shortTRecordUpdateNeeded = false;
 
 			for (String symbol : Configuration.instrumentsFX) {
 				SymbolResponse sr = APICommandFactory.executeSymbolCommand(connector, symbol);
+
 
 				int endIndex = baseBarSeriesMap.get(symbol).getEndIndex();
 				longTRecordUpdateNeeded = updateTradingRecord(endIndex, symbol, longTradingRecordsMap.get(symbol));
@@ -110,14 +122,18 @@ public class App {
 					continue;
 				}
 
+				//skip symbol, too wide spread
+				if(!isSpreadAcceptable(sr) && !Configuration.runTest) {
+					continue;
+				}
 
-				Robot robot = new Robot(baseBarSeriesMap.get(symbol), baseBarSeriesParentMap.get(symbol), longTradingRecordsMap.get(symbol),
+				Robot robot = new Robot(baseBarSeriesMap.get(symbol), baseBarSeriesHelperMap.get(symbol), longTradingRecordsMap.get(symbol),
 						shortTradingRecordsMap.get(symbol), blackList.get(symbol), openedPositions, sr, connector);
 				robot.runRobotIteration();
 
 			}
-			if(robotIteration != 0)
-			updateBlackList(connector);
+//			if(robotIteration != 0)
+//			updateBlackList(connector);
 
 			serializeFiles(robotInfoFileLocation);
 
@@ -178,7 +194,9 @@ public class App {
 				}
 			}
 
-			for (Map.Entry<String, BlackListOperation> pair : blackList.entrySet()) {
+			Set<Entry<String, BlackListOperation>> blackListEntrySet = new HashSet<>();
+			blackListEntrySet.addAll(blackList.entrySet());
+			for (Map.Entry<String, BlackListOperation> pair : blackListEntrySet) {
 				BlackListOperation t = pair.getValue();
 				Long timePassed = new Date().getTime() - t.getCloseTime();
 				Duration d = Duration.ofMillis(timePassed);
@@ -223,29 +241,30 @@ public class App {
 	private static void populateBaseBarSeriesMap(SyncAPIConnector connector) throws APICommandConstructionException,
 			APICommunicationException, APIReplyParseException, APIErrorResponse, ParseException, InterruptedException {
 		ChartResponse cr = null;
-		ChartResponse parentCr = null;
+		ChartResponse helperCr = null;
 		SimpleDateFormat sdf = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss");
-		Date date = sdf.parse(Configuration.sinceDate);
+		Date date = Configuration.sinceDateDt;//sdf.parse(Configuration.sinceDate);
+
 		long millis = date.getTime();
 		for (String symbol : Configuration.instrumentsFX) {
 			cr = APICommandFactory.executeChartLastCommand(connector, symbol, Configuration.candlePeriod, millis);
 			Thread.sleep(250);
-			parentCr =  APICommandFactory.executeChartLastCommand(connector, symbol, Configuration.candleParentPeriod, millis);
+			helperCr =  APICommandFactory.executeChartLastCommand(connector, symbol, Configuration.helperCandlePeriod, millis);
 			Thread.sleep(250);
 
 			List<RateInfoRecord> rateInfos = cr.getRateInfos();
-			List<RateInfoRecord> parentRateInfos = parentCr.getRateInfos();
+			List<RateInfoRecord> helperRateInfos = helperCr.getRateInfos();
 
 			// rateInfos.size()-1 - get last full candle. New one is still changing
 			BaseBarSeries baseBarInfos = convertRateInfoToBarSeries(rateInfos.subList(0, rateInfos.size() - 1), symbol);
-			BaseBarSeries parentBaseBarInfos =  convertRateInfoToBarSeries(parentRateInfos.subList(0, parentRateInfos.size() - 1), symbol);
+			BaseBarSeries helperBaseBarInfos =  convertRateInfoToBarSeries(helperRateInfos.subList(0, helperRateInfos.size() - 1), symbol);
 
 			baseBarSeriesMap.put(symbol, baseBarInfos);
-			baseBarSeriesParentMap.put(symbol, parentBaseBarInfos);
+			baseBarSeriesHelperMap.put(symbol, helperBaseBarInfos);
 		}
 	}
 
-	private static BaseBarSeries convertToParentBaseBar(PERIOD_CODE period, BaseBarSeries baseBarInfos) {
+	private static BaseBarSeries convertToHelperBaseBar(PERIOD_CODE period, BaseBarSeries baseBarInfos) {
 		List<Bar> barList = new ArrayList<>();
 		Duration duration = durationMap.get(period);
 		int loopIterations = BigDecimal.valueOf(duration.toMillis()).divide(BigDecimal.valueOf(baseBarInfos.getFirstBar().getTimePeriod().toMillis()), 0, RoundingMode.HALF_UP).intValue();
@@ -294,27 +313,7 @@ public class App {
 		openedPositions = tradeResponse.getTradeRecords();
 	}
 
-	private static double getOptimalVolume(SyncAPIConnector connector) throws XTBCommunicationException {
-		MarginLevelResponse marginLevelResponse;
-        try {
-			marginLevelResponse = APICommandFactory.executeMarginLevelCommand(connector);
-			BigDecimal balance = BigDecimal.valueOf(marginLevelResponse.getBalance());
-			BigDecimal balancePerTrade = balance.divide(BigDecimal.valueOf(7L), 2, RoundingMode.HALF_UP);
 
-			BigDecimal optimalVolume = BigDecimal.valueOf(1);
-
-			MarginTradeResponse marginTradeResponse = APICommandFactory.executeMarginTradeCommand(connector, Configuration.oneFX[0], optimalVolume.doubleValue());
-			BigDecimal marginRatio = balancePerTrade.divide(BigDecimal.valueOf(marginTradeResponse.getMargin()) , 2, RoundingMode.HALF_UP);
-
-			optimalVolume = optimalVolume.multiply(marginRatio).setScale(2, RoundingMode.HALF_UP);
-			return optimalVolume.doubleValue();
-
-		} catch (APICommandConstructionException | APIReplyParseException | APICommunicationException
-				| APIErrorResponse e) {
-			throw new XTBCommunicationException("Couldn't get optimal volume");
-		}
-
-	}
 
 	private static void serializeFiles(String robotInfoFileLocation) throws SerializationFailedException
 	{
@@ -342,6 +341,12 @@ public class App {
 			longTradingRecordsMap = tradingRecordsMaps.get(LONG_INDEX);
 			shortTradingRecordsMap = tradingRecordsMaps.get(SHORT_INDEX);
 			robotIteration = info.getRobotIteration();
+			//to avoid to big iteration nr
+			if(robotIteration > 1000)
+			{
+				System.out.println("Reseting robot iteration nr to avoid large numbers");
+				robotIteration = 0;
+			}
 			blackList = info.getBlackList();
 		} catch (FileNotFoundException ex) {
 			System.out.println("robot-info.bin file not found. Will create new file");
@@ -359,5 +364,9 @@ public class App {
 			throw new SerializationFailedException("Derialization failed. Class not found exception");
 		}
 
+	}
+
+	private static boolean isSpreadAcceptable(SymbolResponse sr) {
+		return sr.getSymbol().getSpreadTable() <= Configuration.acceptableSpread;
 	}
 }

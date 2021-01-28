@@ -1,5 +1,8 @@
 package pl.kordek.forex.bot.strategy;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+
 import org.ta4j.core.BaseBarSeries;
 import org.ta4j.core.Rule;
 import org.ta4j.core.indicators.helpers.ClosePriceIndicator;
@@ -18,7 +21,7 @@ import org.ta4j.core.trading.rules.UnderIndicatorRule;
 
 public class IchimokuRules {
 	private BaseBarSeries series;
-	private BaseBarSeries parentSeries;
+	private BaseBarSeries helperSeries;
 	private int index;
 
 	// RULES
@@ -34,13 +37,15 @@ public class IchimokuRules {
 	private Rule trendBearishConfirmed;
 	private Rule tenkanCrossesKijunDownRule;
 	private Rule tenkanCrossesKijunUpRule;
+	private Rule tenkanOverCloudRule;
+	private Rule tenkanUnderCloudRule;
 
 
 
-	public IchimokuRules(int index,BaseBarSeries series, BaseBarSeries parentSeries) {
+	public IchimokuRules(int index,BaseBarSeries series, BaseBarSeries helperSeries) {
 		super();
 		this.series = series;
-		this.parentSeries = parentSeries;
+		this.helperSeries = helperSeries;
 		this.index = index;
 
 		createRules();
@@ -49,7 +54,7 @@ public class IchimokuRules {
 	private void createRules() {
 		// INDICATORS
 		ClosePriceIndicator closePrice = new ClosePriceIndicator(series);
-		ClosePriceIndicator closePriceParent = new ClosePriceIndicator(parentSeries);
+		ClosePriceIndicator closePriceHelper = new ClosePriceIndicator(helperSeries);
 
 		IchimokuTenkanSenIndicator tenkanSen = new IchimokuTenkanSenIndicator(series, 9);
 		IchimokuKijunSenIndicator kijunSen = new IchimokuKijunSenIndicator(series, 26);
@@ -57,11 +62,11 @@ public class IchimokuRules {
 		IchimokuSenkouSpanBIndicator senkouSpanB = new IchimokuSenkouSpanBIndicator(series, 52);
 		IchimokuChikouSpanIndicator chikouSpan = new IchimokuChikouSpanIndicator(series, 26);
 
-		IchimokuTenkanSenIndicator tenkanSenParent = new IchimokuTenkanSenIndicator(parentSeries, 9);
-		IchimokuKijunSenIndicator kijunSenParent = new IchimokuKijunSenIndicator(parentSeries, 26);
-		IchimokuSenkouSpanAIndicator senkouSpanAParent = new IchimokuSenkouSpanAIndicator(parentSeries, tenkanSenParent,
-				kijunSenParent);
-		IchimokuSenkouSpanBIndicator senkouSpanBParent = new IchimokuSenkouSpanBIndicator(parentSeries, 52);
+		IchimokuTenkanSenIndicator tenkanSenHelper = new IchimokuTenkanSenIndicator(helperSeries, 9);
+		IchimokuKijunSenIndicator kijunSenHelper = new IchimokuKijunSenIndicator(helperSeries, 26);
+		IchimokuSenkouSpanAIndicator senkouSpanAHelper = new IchimokuSenkouSpanAIndicator(helperSeries, tenkanSenHelper,
+				kijunSenHelper);
+		IchimokuSenkouSpanBIndicator senkouSpanBHelper = new IchimokuSenkouSpanBIndicator(helperSeries, 52);
 
 		// Try to get data from a previous bar for confirmation
 		PreviousValueIndicator closePricePrevious = new PreviousValueIndicator(closePrice);
@@ -92,10 +97,20 @@ public class IchimokuRules {
 
 		cloudBullish = new OverIndicatorRule(senkouSpanA, senkouSpanB);
 		cloudBearish = new UnderIndicatorRule(senkouSpanA, senkouSpanB);
-		Rule parentCloudBullish = new OverIndicatorRule(senkouSpanAParent, senkouSpanBParent);
-		Rule parentCloudBearish = new UnderIndicatorRule(senkouSpanAParent, senkouSpanBParent);
-		trendBullishConfirmed = new BooleanRule(parentCloudBullish.isSatisfied(parentSeries.getEndIndex()) && cloudBullish.isSatisfied(series.getEndIndex()));
-		trendBearishConfirmed = new BooleanRule(parentCloudBearish.isSatisfied(parentSeries.getEndIndex()) && cloudBearish.isSatisfied(series.getEndIndex()));
+		Rule helperCloudBullish = new OverIndicatorRule(senkouSpanAHelper, senkouSpanBHelper);
+		Rule helperCloudBearish = new UnderIndicatorRule(senkouSpanAHelper, senkouSpanBHelper);
+
+		int helperEndIndex = helperSeries.getEndIndex();
+		int endIndex = series.getEndIndex();
+		BigDecimal helperFactor = BigDecimal.valueOf(helperEndIndex).divide(BigDecimal.valueOf(endIndex), 2, RoundingMode.HALF_UP);
+
+		int helperIndex = BigDecimal.valueOf(index).multiply(helperFactor).intValue();
+
+		trendBullishConfirmed = new BooleanRule(helperCloudBullish.isSatisfied(helperIndex) && cloudBullish.isSatisfied(index));
+		trendBearishConfirmed = new BooleanRule(helperCloudBearish.isSatisfied(helperIndex) && cloudBearish.isSatisfied(index));
+
+		tenkanOverCloudRule = new OverIndicatorRule(tenkanSen, senkouSpanB).and(new OverIndicatorRule(tenkanSen, senkouSpanA));
+		tenkanUnderCloudRule = new UnderIndicatorRule(tenkanSen, senkouSpanB).and(new UnderIndicatorRule(tenkanSen, senkouSpanA));
 	}
 
 	public Rule getPriceUnderCloud() {
@@ -145,6 +160,14 @@ public class IchimokuRules {
 
 	public Rule getTenkanCrossesKijunUpRule() {
 		return tenkanCrossesKijunUpRule;
+	}
+
+	public Rule getTenkanOverCloudRule() {
+		return tenkanOverCloudRule;
+	}
+
+	public Rule getTenkanUnderCloudRule() {
+		return tenkanUnderCloudRule;
 	}
 
 

@@ -15,6 +15,7 @@ import org.ta4j.core.num.DoubleNum;
 import pl.kordek.forex.bot.constants.Configuration;
 import pl.kordek.forex.bot.domain.BlackListOperation;
 import pl.kordek.forex.bot.exceptions.XTBCommunicationException;
+import pl.kordek.forex.bot.strategy.StopLossHelper;
 import pl.kordek.forex.bot.strategy.StrategyBuilder;
 import pl.kordek.forex.bot.strategy.StrategyTester;
 import pro.xstore.api.message.codes.TRADE_OPERATION_CODE;
@@ -37,9 +38,10 @@ public class Robot {
 
 	private final int TYPE_OF_OPERATION_BUY = 0;
 	private final int TYPE_OF_OPERATION_SELL = 1;
+	private final double EXAMPLARY_VOLUME = 0.5;
 
 	private BaseBarSeries series = null;
-	private BaseBarSeries parentSeries = null;
+	private BaseBarSeries helperSeries = null;
 	private TradingRecord longTradingRecord = null;
 	private TradingRecord shortTradingRecord = null;
 	private SymbolResponse symbolResponse = null;
@@ -52,13 +54,12 @@ public class Robot {
 
 	private SyncAPIConnector connector = null;
 
-	private static double volume = 0.05;
 
 
-	public Robot(BaseBarSeries series, BaseBarSeries parentSeries, TradingRecord longTradingRecord, TradingRecord shortTradingRecord, BlackListOperation bListOp,
+	public Robot(BaseBarSeries series, BaseBarSeries helperSeries, TradingRecord longTradingRecord, TradingRecord shortTradingRecord, BlackListOperation bListOp,
 			List<TradeRecord> openedPositions, SymbolResponse symbolResponse, SyncAPIConnector connector) {
 		this.series = series;
-		this.parentSeries = parentSeries;
+		this.helperSeries = helperSeries;
 		this.openedPositions = openedPositions;
 		this.symbolResponse = symbolResponse;
 		this.connector = connector;
@@ -72,23 +73,25 @@ public class Robot {
 
 			int endIndex = series.getEndIndex();
 
-			Strategy longStrategy = StrategyBuilder.buildLongStrategy(endIndex, series, parentSeries);
-			Strategy shortStrategy = StrategyBuilder.buildShortStrategy(endIndex, series, parentSeries);
+			Strategy longStrategy = StrategyBuilder.buildLongStrategy(endIndex, series, helperSeries);
+			Strategy shortStrategy = StrategyBuilder.buildShortStrategy(endIndex, series, helperSeries);
 
-			//check for long. take blacklist into consideration
-			if(blackListOperation == null || blackListOperation.getTypeOfOperation() == TYPE_OF_OPERATION_SELL){
-				checkForPositions(endIndex, symbol, longStrategy, shortStrategy, TRADE_OPERATION_CODE.BUY);
+			if(!Configuration.runTest) {
+				//check for long. take blacklist into consideration
+				if(blackListOperation == null || blackListOperation.getTypeOfOperation() == TYPE_OF_OPERATION_SELL){
+					checkForPositions(endIndex, symbol, longStrategy, shortStrategy, TRADE_OPERATION_CODE.BUY);
+				}
+				//check for short.  take blacklist into consideration
+				if(blackListOperation == null || blackListOperation.getTypeOfOperation() == TYPE_OF_OPERATION_BUY) {
+					checkForPositions(endIndex, symbol, shortStrategy, longStrategy, TRADE_OPERATION_CODE.SELL);
+				}
 			}
-
-
-			//check for short.  take blacklist into consideration
-			if(blackListOperation == null || blackListOperation.getTypeOfOperation() == TYPE_OF_OPERATION_BUY) {
-				checkForPositions(endIndex, symbol, shortStrategy, longStrategy, TRADE_OPERATION_CODE.SELL);
+			else {
+				if(Configuration.runTestFX.equals(symbol)) {
+					StrategyTester tester = new StrategyTester(series, helperSeries);
+					tester.strategyTest(endIndex-Configuration.testedIndex, symbol);
+				}
 			}
-
-//			StrategyTester tester = new StrategyTester(series, parentSeries);
-//			tester.strategyTest(endIndex-1, symbol);
-
 	}
 
 	private boolean checkForPositions(int endIndex, String symbol, Strategy baseStrategy, Strategy oppositeStrategy,
@@ -104,32 +107,29 @@ public class Robot {
 		boolean openedSymbolOperationValid = openedPositions.stream().filter(e -> e.getSymbol().equals(symbol)).anyMatch(e -> e.getCmd() == typeOfOperation);
 
 		if (!isSymbolOpenedXTB && shouldEnter) {
-			if(!isEnoughMargin()) {
-				System.out.println(new Date() + ": "+strategyType + " strategy should ENTER on " + symbol + " but not enough margin");
-				return false;
-			}
-			System.out.println(new Date() + ": "+strategyType + " strategy should ENTER on " + symbol);
+
+			System.out.println(new Date() + ": "+strategyType + " strategy should ENTER on " + symbol + ". Bar close price "+series.getLastBar().getClosePrice());
 			boolean entered = tradingRecord.enter(endIndex, series.getLastBar().getClosePrice(),
-					DoubleNum.valueOf(volume));
+					DoubleNum.valueOf(EXAMPLARY_VOLUME));
 			if (entered) {
-				openPosition(symbol, operationCode);
-				Thread.sleep(250);
+				enterXTB(operationCode);
+				System.out.println(new Date() + ": Opened in XTB successfully");
 				return true;
 			} else {
 				System.out.println(new Date() + ": Didn't enter "+strategyType+" position for: " + symbol);
 			}
 		}
 		if(isSymbolOpenedXTB && openedSymbolOperationValid) {
-			updateStopLoss(operationCode);
-			Thread.sleep(250);
-			if (shouldExit/* || shouldOppositeEnter*/) {
+			if(Configuration.updateStopLoss)
+				updateStopLoss(operationCode);
+			if (shouldExit) {
 				System.out.println(new Date() + ": "+strategyType + " strategy should EXIT on " + symbol + ". Exit strategy valid:" + shouldExit
 						+ ". Should opposite enter:" + shouldOppositeEnter);
 				boolean exited = tradingRecord.exit(endIndex, series.getLastBar().getClosePrice(),
-						DoubleNum.valueOf(volume));
+						DoubleNum.valueOf(EXAMPLARY_VOLUME));
 				if (exited) {
-					closePosition(symbol, operationCode);
-					Thread.sleep(250);
+					exitXTB(operationCode);
+					System.out.println(new Date() + ": Closed in XTB successfully");
 					return true;
 				} else {
 					System.out.println(new Date() + ": Didn't exit "+strategyType+" position for: " + symbol);
@@ -140,77 +140,72 @@ public class Robot {
 		return false;
 	}
 
-	private void openPosition(String symbol, TRADE_OPERATION_CODE operationCode) throws XTBCommunicationException {
-		// Our strategy should enter
 
-		try {
-			enterXTB(operationCode);
-			System.out.println(new Date() + ": Opened in XTB successfully");
-		} catch (APICommandConstructionException | APIReplyParseException | APICommunicationException
-				| APIErrorResponse e1) {
-			System.out.println(new Date() + ": Failed to open in XTB" + symbol);
-			throw new XTBCommunicationException("Couldn't open the position in XTB due to communication problems: "+symbol);
-		}
-	}
-
-	private void closePosition(String symbol, TRADE_OPERATION_CODE operationCode) throws XTBCommunicationException {
-		try {
-			exitXTB(operationCode);
-			System.out.println(new Date() + ": Closed in XTB successfully");
-		} catch (APICommandConstructionException | APIReplyParseException | APICommunicationException
-				| APIErrorResponse e1) {
-			System.out.println(new Date() + ": Failed to close in XTB" + symbol);
-			throw new XTBCommunicationException("Couldn't close the position in XTB due to communication problems: "+symbol);
-		}
-	}
-
-	private void enterXTB(TRADE_OPERATION_CODE operationCode) throws APICommandConstructionException, APIReplyParseException, APICommunicationException, APIErrorResponse {
-		SymbolRecord symbolRecord = symbolResponse.getSymbol();
+	private void enterXTB(TRADE_OPERATION_CODE operationCode) throws XTBCommunicationException {
 		OrderType orderType = operationCode == TRADE_OPERATION_CODE.BUY ? OrderType.BUY : OrderType.SELL;
-
-		BigDecimal stopLossBD = calculateStopLoss(orderType);
-
-
-		double stopLoss = 0.0;
-		double takeProfit = 0.0;
-
-		//if can't calculate stop loss by finding the lowest/highest value then set stop loss by price percentage
-		if(stopLossBD.doubleValue() == 0.0) {
-			stopLoss = calculateStopLossPrc(orderType, Configuration.stopLossPrc).doubleValue();
-			takeProfit = calculateTakeProfitPrc(orderType, Configuration.takeProfitPrc).doubleValue();
+		SymbolRecord symbolRecord = symbolResponse.getSymbol();
+		double optimalVolume = getOptimalVolume(symbolRecord.getSymbol());
+		double strategyStrength = StrategyBuilder.assessStrategyStrength(orderType, series);
+		System.out.println(new Date() + ": Strategy strength: "+strategyStrength);
+		//strategyStrength = 1.0;
+		double smartVolume = BigDecimal.valueOf(optimalVolume).multiply(BigDecimal.valueOf(strategyStrength)).setScale(2, RoundingMode.HALF_DOWN).doubleValue();
+		if(optimalVolume < 0.01) {
+			System.out.println(new Date() + ": Calculated volume is below 0.01 for symbol: "+symbolRecord.getSymbol()+". Skipping the trade");
+			return;
 		}
-		else {
-			stopLoss = stopLossBD.doubleValue();
-			takeProfit = calculateTakeProfit(orderType, stopLossBD).doubleValue();
+		if(smartVolume < 0.01) {
+			smartVolume = 0.01;
 		}
+		if(!isEnoughMargin(smartVolume)) {
+			System.out.println(new Date() + ": "+orderType + " strategy should ENTER on " + symbolRecord.getSymbol() + " but not enough margin");
+			return;
+		}
+		try {
+			BigDecimal stopLoss = calculateStopLoss(orderType, series);
 
-		//set take profit to 0 for now
-		TradeTransInfoRecord ttInfoRecord = new TradeTransInfoRecord(operationCode,
-				TRADE_TRANSACTION_TYPE.OPEN, symbolRecord.getBid(), stopLoss , 0.0 , symbolRecord.getSymbol(), volume, 0L, "" , 0L);
+			BigDecimal takeProfit = calculateTakeProfit(orderType, stopLoss);
 
-		TradeTransactionResponse tradeTransactionResponse = APICommandFactory.executeTradeTransactionCommand(connector,
-				ttInfoRecord);
+			if(stopLoss.doubleValue() == 0.0) {
+				System.out.println(new Date() + ": Couldnt calculate the stoploss that would be below the max allowed percentage: "+Configuration.stopLossPrc+ ". Skipping trade");
+				return;
+			}
+			TradeTransInfoRecord ttInfoRecord = new TradeTransInfoRecord(operationCode,
+					TRADE_TRANSACTION_TYPE.OPEN, symbolRecord.getBid(), stopLoss.doubleValue() , takeProfit.doubleValue() , symbolRecord.getSymbol(), smartVolume, 0L, "" , 0L);
 
+			TradeTransactionResponse tradeTransactionResponse = APICommandFactory.executeTradeTransactionCommand(connector,
+					ttInfoRecord);
+			Thread.sleep(250);
+		} catch (APICommandConstructionException | APIReplyParseException | APICommunicationException
+				| APIErrorResponse | InterruptedException e1) {
+			System.out.println(new Date() + ": Failed to open in XTB" + symbolRecord.getSymbol());
+			throw new XTBCommunicationException("Couldn't open the position in XTB due to communication problems: "+symbolRecord.getSymbol());
+		}
 	}
 
-	private void exitXTB(TRADE_OPERATION_CODE operationCode) throws APICommandConstructionException, APIReplyParseException, APICommunicationException, APIErrorResponse {
+	private void exitXTB(TRADE_OPERATION_CODE operationCode) throws XTBCommunicationException {
 		TradeRecord tr = openedPositions.stream().filter(e-> e.getSymbol().equals(symbolResponse.getSymbol().getSymbol())).findAny()
                 .orElse(null);
-		if(tr==null) return;
-
-		TradeTransInfoRecord ttInfoRecord = new TradeTransInfoRecord(operationCode,
-				TRADE_TRANSACTION_TYPE.CLOSE, tr.getClose_price(), tr.getSl(), tr.getTp(), tr.getSymbol(), tr.getVolume(), tr.getOrder(), tr.getComment(), tr.getExpiration());
-
-		TradeTransactionResponse tradeTransactionResponse = APICommandFactory
-				.executeTradeTransactionCommand(connector, ttInfoRecord);
+		try {
+			if(tr==null) return;
+			TradeTransInfoRecord ttInfoRecord = new TradeTransInfoRecord(operationCode,
+					TRADE_TRANSACTION_TYPE.CLOSE, tr.getClose_price(), tr.getSl(), tr.getTp(), tr.getSymbol(), tr.getVolume(), tr.getOrder(), tr.getComment(), tr.getExpiration());
+			TradeTransactionResponse tradeTransactionResponse = APICommandFactory
+					.executeTradeTransactionCommand(connector, ttInfoRecord);
+			Thread.sleep(250);
+		} catch (APICommandConstructionException | APIReplyParseException | APICommunicationException
+				| APIErrorResponse | InterruptedException e1) {
+			System.out.println(new Date() + ": Failed to close in XTB" + tr.getSymbol());
+			throw new XTBCommunicationException("Couldn't close the position in XTB due to communication problems: "+tr.getSymbol());
+		}
 
 	}
 
 	private void updateStopLoss(TRADE_OPERATION_CODE operationCode) throws XTBCommunicationException {
 		try {
 			updateStopLossXTB(operationCode);
+			Thread.sleep(250);
 		} catch (APICommandConstructionException | APIReplyParseException | APICommunicationException
-				| APIErrorResponse e) {
+				| APIErrorResponse | InterruptedException e) {
 			throw new XTBCommunicationException("Couldn't execute stop loss update");
 		}
 	}
@@ -223,10 +218,17 @@ public class Robot {
 			return;
 
 		OrderType orderType = operationCode == TRADE_OPERATION_CODE.BUY ? OrderType.BUY : OrderType.SELL;
-		double stopLoss = calculateStopLoss(orderType).doubleValue();
 
-		//stop loss is 0.0 when the newest candle is the lowest/highest
-		if(stopLoss == 0.0) return;
+		BigDecimal stopLossBD = calculateStopLoss(orderType, series);
+
+		double stopLoss = stopLossBD.doubleValue();
+
+
+
+		//stop loss is 0.0 when the newest candle is the lowest/highest. Don't update if the calculation is the same as the current sl
+		if(stopLoss == 0.0 || tr.getSl().equals(stopLoss)) return;
+
+		double takeProfit = calculateTakeProfit(orderType, stopLossBD).doubleValue();
 
 		TradeTransInfoRecord ttInfoRecord = new TradeTransInfoRecord(operationCode,
 				TRADE_TRANSACTION_TYPE.MODIFY, tr.getClose_price(), stopLoss, tr.getTp(), tr.getSymbol(), tr.getVolume(), tr.getOrder(), tr.getComment(), tr.getExpiration());
@@ -242,18 +244,18 @@ public class Robot {
         return marginLevelResponse.getMargin_free();
 	}
 
-	private Double getMarginNeeded() throws APICommandConstructionException, APIReplyParseException, APICommunicationException, APIErrorResponse {
+	private Double getMarginNeeded(Double volume) throws APICommandConstructionException, APIReplyParseException, APICommunicationException, APIErrorResponse {
 		MarginTradeResponse marginTradeResponse;
 		marginTradeResponse = APICommandFactory.executeMarginTradeCommand(connector, symbolResponse.getSymbol().getSymbol(), volume);
         return marginTradeResponse.getMargin();
 	}
 
-	private boolean isEnoughMargin() throws XTBCommunicationException {
+	private boolean isEnoughMargin(Double volume) throws XTBCommunicationException {
 		Double marginFree = 0.0;
 		Double marginNeeded = 0.0;
 		try {
 			marginFree = getMarginFree();
-			marginNeeded = getMarginNeeded();
+			marginNeeded = getMarginNeeded(volume);
 		} catch (APICommandConstructionException | APIReplyParseException | APICommunicationException
 				| APIErrorResponse e) {
 			throw new XTBCommunicationException("Couldn't execute is enough margin check");
@@ -262,35 +264,22 @@ public class Robot {
 		return marginFree > marginNeeded;
 	}
 
-	private BigDecimal calculateStopLossPrc(OrderType orderType, Double percentage){
-		Integer precisionNumber = symbolResponse.getSymbol().getPrecision();
-        BigDecimal stopLossRatioPrc = orderType == OrderType.BUY ? BigDecimal.valueOf(100L).subtract(BigDecimal.valueOf(percentage)) : BigDecimal.valueOf(100L).add(BigDecimal.valueOf(percentage));
-		BigDecimal stopLossRatio = stopLossRatioPrc.divide(BigDecimal.valueOf(100L));
-        Double price = orderType == OrderType.BUY ? symbolResponse.getSymbol().getBid() : symbolResponse.getSymbol().getAsk();
-        BigDecimal priceBigDecimal = BigDecimal.valueOf(price);
-        BigDecimal stopLossPrice = priceBigDecimal.multiply(stopLossRatio).setScale(precisionNumber, RoundingMode.HALF_UP);
 
-        return stopLossPrice;
-    }
 
-	private BigDecimal calculateStopLoss(OrderType orderType){
+	private BigDecimal calculateStopLoss(OrderType orderType, BaseBarSeries series){
 		Integer precisionNumber = symbolResponse.getSymbol().getPrecision();
-        double stopLossWithoutPrecision = StrategyBuilder.getNewStopLoss(series, orderType);
-        BigDecimal stopLoss = BigDecimal.valueOf(stopLossWithoutPrecision).scaleByPowerOfTen(-precisionNumber);
+        BigDecimal stopLoss = StopLossHelper.getNewStopLoss(series, orderType, Configuration.stopLossBarCount).scaleByPowerOfTen(-precisionNumber);
         return stopLoss;
     }
 
-
-	private BigDecimal calculateTakeProfitPrc(OrderType orderType, Double percentage){
+	private BigDecimal calculateTrailingStopLoss(TradeRecord tr, BaseBarSeries series){
 		Integer precisionNumber = symbolResponse.getSymbol().getPrecision();
-        BigDecimal takeProfitRatioPrc = orderType == OrderType.BUY ? BigDecimal.valueOf(100L).add(BigDecimal.valueOf(percentage)) : BigDecimal.valueOf(100L).subtract(BigDecimal.valueOf(percentage));
-		BigDecimal takeProfitRatio = takeProfitRatioPrc.divide(BigDecimal.valueOf(100L));
-        Double price = orderType == OrderType.BUY ? symbolResponse.getSymbol().getAsk() : symbolResponse.getSymbol().getBid();
-        BigDecimal priceBigDecimal = BigDecimal.valueOf(price);
-        BigDecimal takeProfitPrice = priceBigDecimal.multiply(takeProfitRatio).setScale(precisionNumber, RoundingMode.HALF_UP);
+		BigDecimal closePrice = BigDecimal.valueOf(series.getLastBar().getClosePrice().doubleValue()).scaleByPowerOfTen(-precisionNumber);
+		BigDecimal trail = BigDecimal.valueOf(tr.getSl()).subtract(new BigDecimal(tr.getClose_price()));
 
-        return takeProfitPrice;
+        return BigDecimal.valueOf(StopLossHelper.getNewTrailingStopLoss(closePrice, trail, new BigDecimal(tr.getSl())));
     }
+
 
 	private BigDecimal calculateTakeProfit(OrderType orderType, BigDecimal stopLoss){
 		BigDecimal takeProfitVsStopLossCoeffBD = BigDecimal.valueOf(Configuration.takeProfitVsStopLossCoeff);
@@ -305,8 +294,26 @@ public class Robot {
     }
 
 
-	public static void setVolume(Double vol) {
-		volume = vol;
+	private double getOptimalVolume(String symbol) throws XTBCommunicationException {
+		MarginLevelResponse marginLevelResponse;
+        try {
+			marginLevelResponse = APICommandFactory.executeMarginLevelCommand(connector);
+			BigDecimal balance = BigDecimal.valueOf(marginLevelResponse.getBalance());
+			BigDecimal balancePerTrade = balance.divide(BigDecimal.valueOf(5L), 2, RoundingMode.HALF_UP);
+
+			BigDecimal optimalVolume = BigDecimal.valueOf(1);
+
+			MarginTradeResponse marginTradeResponse = APICommandFactory.executeMarginTradeCommand(connector, symbol, optimalVolume.doubleValue());
+			BigDecimal marginRatio = balancePerTrade.divide(BigDecimal.valueOf(marginTradeResponse.getMargin()) , 2, RoundingMode.HALF_UP);
+
+			optimalVolume = optimalVolume.multiply(marginRatio).setScale(2, RoundingMode.HALF_UP);
+			Thread.sleep(250);
+			return optimalVolume.doubleValue();
+		} catch (APICommandConstructionException | APIReplyParseException | APICommunicationException
+				| APIErrorResponse | InterruptedException e) {
+			throw new XTBCommunicationException("Couldn't get optimal volume");
+		}
+
 	}
 
 }
