@@ -1,6 +1,7 @@
 package pl.kordek.forex.bot.strategy;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 import org.ta4j.core.BaseBarSeries;
 import org.ta4j.core.BaseTradingRecord;
@@ -8,6 +9,8 @@ import org.ta4j.core.Rule;
 import org.ta4j.core.Strategy;
 import org.ta4j.core.TradingRecord;
 import org.ta4j.core.Order.OrderType;
+import org.ta4j.core.indicators.EMAIndicator;
+import org.ta4j.core.indicators.MACDIndicator;
 import org.ta4j.core.indicators.candles.BearishEngulfingIndicator;
 import org.ta4j.core.indicators.candles.BullishEngulfingIndicator;
 import org.ta4j.core.indicators.candles.BullishShrinkingCandlesIndicator;
@@ -45,70 +48,48 @@ public class StrategyTester {
 
 	public void strategyTest(int index, String symbol) {
 
-		Strategy longStrategy = StrategyBuilder.buildLongStrategy(index, series, helperSeries);
-		Strategy shortStrategy = StrategyBuilder.buildShortStrategy(index, series, helperSeries);
+		StrategyBuilder stratBuilder = new StrategyBuilder(index, series, helperSeries);
+
+		List<Strategy> longStrategies = stratBuilder.buildLongStrategies();
+		List<Strategy> shortStrategies = stratBuilder.buildShortStrategies();
 
 		OpenPriceIndicator openPrice = new OpenPriceIndicator(series);
 		ClosePriceIndicator closePrice = new ClosePriceIndicator(series);
-		System.out.println("Should enter short for: " + symbol + " index:" + index + " price:" + closePrice.getValue(index)
-				+ " = " + shortStrategy.shouldEnter(index));
-		System.out.println("Should enter long for: " + symbol + " index:" + index + " price:" + closePrice.getValue(index)
-		+ " = " + longStrategy.shouldEnter(index));
 
-		CandlesRulesBuilder candlesRules = new CandlesRulesBuilder(series);
+		for(Strategy shortStrat : shortStrategies) {
+			System.out.println(shortStrat.getName()+"Should enter short for: " + symbol + " index:" + index + " price:" + closePrice.getValue(index)
+					+ " = " + shortStrat.shouldEnter(index));
+		}
+		for(Strategy longStrat : shortStrategies) {
+			System.out.println(longStrat.getName()+" Should enter long for: " + symbol + " index:" + index + " price:" + closePrice.getValue(index)
+				+ " = " + longStrat.shouldEnter(index));
+		}
 
 
-		BullishEngulfingIndicator bullishEngulfingCandle = new BullishEngulfingIndicator(series);
-		BearishEngulfingIndicator bearishEngulfingCandle = new BearishEngulfingIndicator(series);
-		Rule bullishEngulfingCandleExist = candlesRules.getBullishEngulfingRule();
-		Rule bearishEngulfingCandleExist = candlesRules.getBearishEngulfingRule();
-
-		Rule bullishShrinkingCandlesRule = candlesRules.getBullishShrinkingCandlesRule();
-		Rule bearishShrinkingCandlesRule = candlesRules.getBearishShrinkingCandlesRule();
-		Rule bullishPin = candlesRules.getBullishPinBarRule();
-		Rule bearishPin = candlesRules.getBearishPinBarRule();
 
 		IchimokuRules ichimokuRules = new IchimokuRules(index, series, helperSeries);
 
 		OrderType orderType = OrderType.BUY;
-		StopLossSmartIndicator slIndicator = new StopLossSmartIndicator(series, Configuration.stopLossPrc, OrderType.BUY, 7);
+		StopLossSmartIndicator slIndicator = new StopLossSmartIndicator(series, Configuration.stopLossMaxPrcFX, OrderType.BUY, 7);
 		double stopLossWithoutPrecision = slIndicator.getValue(index).doubleValue();//StopLossHelper.getNewStopLoss(index, series, orderType, 7).doubleValue();
 
-		LowPriceIndicator lowPrice = new LowPriceIndicator(series);
-		HighPriceIndicator highPrice = new HighPriceIndicator(series);
 
-		IsLowestRule isLowest = new IsLowestRule(lowPrice, 7);
-		IsHighestRule isHighest = new IsHighestRule(highPrice, 7);
-
-		Rule customLong = candlesRules.getCustomPriceActionLongRule();
-		Rule customShort = candlesRules.getCustomPriceActionShortRule();
 
 		 Rule trendBullishConfirmed= ichimokuRules.getTrendBullishConfirmed();
 		 Rule trendBearishConfirmed= ichimokuRules.getTrendBearishConfirmed();
 
 		System.out.println("symbol: " + symbol);
-		System.out.println("bullish engulfing: " + bullishEngulfingCandleExist.isSatisfied(index));
-		System.out.println("bearish engulfing: " + bearishEngulfingCandleExist.isSatisfied(index));
-		System.out.println("bullish pin: " + bullishPin.isSatisfied(index));
-		System.out.println("bearish pin: " + bearishPin.isSatisfied(index));
-		System.out.println("bullish shrinking candles: " + bullishShrinkingCandlesRule.isSatisfied(index));
-		System.out.println("bearish shrinking candles: " + bearishShrinkingCandlesRule.isSatisfied(index));
 
+		indicatorTest(index, closePrice);
 		System.out.println("StopLoss for index for orderType "+orderType+": " + stopLossWithoutPrecision);
 
-		System.out.println("is highest: " + isHighest.isSatisfied(index));
-		System.out.println("is lowest: " + isLowest.isSatisfied(index));
 
-		System.out.println("custom long satisfied: " + customLong.isSatisfied(index));
-		System.out.println("custom short satisfied: " + customShort.isSatisfied(index));
+
 
 		System.out.println("trend bullish confirmed: " + trendBullishConfirmed.isSatisfied(index));
 		System.out.println("trend bearish confirmed: " + trendBearishConfirmed.isSatisfied(index));
 
-		//System.out.println("StopLoss prc for index for orderType "+orderType+": " + stopLossWithoutPrc);
 
-		System.out.println("Long Entry Signal Count: "+ candlesRules.getLongEntrySignals().getValue(index)+
-				". Short Entry Signal Count:"+ candlesRules.getShortEntrySignals().getValue(index));
 	}
 
 	public void strategyTest2( OrderType orderType, int index) {
@@ -123,7 +104,51 @@ public class StrategyTester {
 
 	}
 
-	void stopLossCalcTest(int index) {
+	private void indicatorTest(int index, ClosePriceIndicator closePrice) {
+		MACDIndicator macd = new MACDIndicator(closePrice, 12 , 26);
+		EMAIndicator signal = new EMAIndicator(macd, 9);
+		System.out.println("MACD: " + macd.getValue(index));
+		System.out.println("signal: " + signal.getValue(index));
+	}
 
+	private void priceActionTest(int index) {
+		CandlesRules candlesRules = new CandlesRules(series);
+
+
+		BullishEngulfingIndicator bullishEngulfingCandle = new BullishEngulfingIndicator(series);
+		BearishEngulfingIndicator bearishEngulfingCandle = new BearishEngulfingIndicator(series);
+		Rule bullishEngulfingCandleExist = candlesRules.getBullishEngulfingRule();
+		Rule bearishEngulfingCandleExist = candlesRules.getBearishEngulfingRule();
+
+		Rule bullishShrinkingCandlesRule = candlesRules.getBullishShrinkingCandlesRule();
+		Rule bearishShrinkingCandlesRule = candlesRules.getBearishShrinkingCandlesRule();
+		Rule bullishPin = candlesRules.getBullishPinBarRule();
+		Rule bearishPin = candlesRules.getBearishPinBarRule();
+
+		LowPriceIndicator lowPrice = new LowPriceIndicator(series);
+		HighPriceIndicator highPrice = new HighPriceIndicator(series);
+
+		IsLowestRule isLowest = new IsLowestRule(lowPrice, 7);
+		IsHighestRule isHighest = new IsHighestRule(highPrice, 7);
+
+		Rule customLong = candlesRules.getCustomPriceActionLongRule();
+		Rule customShort = candlesRules.getCustomPriceActionShortRule();
+
+		System.out.println("bullish engulfing: " + bullishEngulfingCandleExist.isSatisfied(index));
+		System.out.println("bearish engulfing: " + bearishEngulfingCandleExist.isSatisfied(index));
+		System.out.println("bullish pin rule: " + bullishPin.isSatisfied(index));
+		System.out.println("bearish pin rule: " + bearishPin.isSatisfied(index));
+		System.out.println("bullish shrinking candles: " + bullishShrinkingCandlesRule.isSatisfied(index));
+		System.out.println("bearish shrinking candles: " + bearishShrinkingCandlesRule.isSatisfied(index));
+
+		System.out.println("custom long satisfied: " + customLong.isSatisfied(index));
+		System.out.println("custom short satisfied: " + customShort.isSatisfied(index));
+
+		System.out.println("Long Entry Signal Count: "+ candlesRules.getLongEntrySignals().getValue(index)+
+				". Short Entry Signal Count:"+ candlesRules.getShortEntrySignals().getValue(index));
+
+
+		System.out.println("is highest: " + isHighest.isSatisfied(index));
+		System.out.println("is lowest: " + isLowest.isSatisfied(index));
 	}
 }

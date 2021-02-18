@@ -2,6 +2,7 @@ package pl.kordek.forex.bot.strategy;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.Arrays;
 import java.util.Date;
 
 import org.ta4j.core.BaseBarSeries;
@@ -26,28 +27,26 @@ public class StopLossHelper {
 
 
 	public static BigDecimal getNewStopLoss(BaseBarSeries series, OrderType orderType, int barCount) {
-		return getNewStopLoss(series.getEndIndex(), series, orderType, barCount);
+		return getNewStopLoss(series.getEndIndex(), series, orderType,  barCount);
 	}
 
-	public static BigDecimal getNewStopLoss(int endIndex, BaseBarSeries series, OrderType orderType, int barCount) {
+	public static BigDecimal getNewStopLoss(int endIndex, BaseBarSeries series, OrderType orderType,  int barCount) {
 		if (series == null) {
 			throw new IllegalArgumentException("Series cannot be null");
 		}
-		if(!Configuration.stopLossSetToSupport) {
-			return BigDecimal.ZERO;
-		}
-
 
 		BigDecimal zero = BigDecimal.valueOf(0.0);
 
 		int index = 0;
-		stopLossPrc = calculateStopLossPrc(orderType, series.getLastBar().getClosePrice().doubleValue());
+		stopLossPrc = calculateStopLossPrc(series, orderType, series.getLastBar().getClosePrice().doubleValue());
 
 		do {
 			stopLossByMax = getMaxValue(endIndex, series, orderType, barCount-index);
 			index++;
 		}
 		while((stopLossByMax.equals(zero) || isStopLossExceedingMax(orderType)) && barCount > index);
+
+
 
 		return stopLossByMax;
 	}
@@ -84,8 +83,6 @@ public class StopLossHelper {
 		HighestValueIndicator highest = new HighestValueIndicator(highPrice, barCount);
 
 		ATRIndicator atr = new ATRIndicator(series, 14);
-		Num atrVal = atr.getValue(endIndex);
-
 
 		Num result;
 		if(orderType == OrderType.BUY)
@@ -95,9 +92,8 @@ public class StopLossHelper {
 
 			//dont return stoploss if the lowest value is the newest value.
 			//And if the lowest value is one of the rising candles (unless it's a pinbar)
-			if( !series.getBar(lowestIndex).isBearish()
-							&& !series.getBar(lowestIndex-1).isBearish()
-							&& !bullishPinBar.getValue(lowestIndex)) {
+			if (!series.getBar(lowestIndex).isBearish() && !series.getBar(lowestIndex - 1).isBearish()
+					&& !bullishPinBar.getValue(lowestIndex)) {
 				return BigDecimal.valueOf(0.0);
 			}
 
@@ -107,9 +103,8 @@ public class StopLossHelper {
 			result = highest.getValue(endIndex);
 			int highestIndex = highest.getHighestIndex(endIndex);
 
-			if(!series.getBar(highestIndex).isBullish()
-							&& !series.getBar(highestIndex-1).isBullish()
-							&& !bearishPinBar.getValue(highestIndex)) {
+			if (!series.getBar(highestIndex).isBullish() && !series.getBar(highestIndex - 1).isBullish()
+					&& !bearishPinBar.getValue(highestIndex)) {
 				return BigDecimal.valueOf(0.0);
 			}
 
@@ -121,10 +116,14 @@ public class StopLossHelper {
 		return resultBD;
 	}
 
-	public static BigDecimal calculateStopLossPrc(OrderType orderType, Double closePrice){
+	public static BigDecimal calculateStopLossPrc(BaseBarSeries series, OrderType orderType, Double closePrice){
+		String symbol = series.getName();
+		Boolean isFxSymbol = Arrays.asList(Configuration.majorFX).contains(symbol);
+		Double stopLossMax = isFxSymbol ? Configuration.stopLossMaxPrcFX : Configuration.stopLossMaxPrcOthers;
+
         BigDecimal stopLossRatioPrc = orderType == OrderType.BUY
-        		? BigDecimal.valueOf(100L).subtract(BigDecimal.valueOf(Configuration.stopLossPrc))
-        		: BigDecimal.valueOf(100L).add(BigDecimal.valueOf(Configuration.stopLossPrc));
+        		? BigDecimal.valueOf(100L).subtract(BigDecimal.valueOf(stopLossMax))
+        		: BigDecimal.valueOf(100L).add(BigDecimal.valueOf(stopLossMax));
 		BigDecimal stopLossRatio = stopLossRatioPrc.divide(BigDecimal.valueOf(100L));
         BigDecimal stopLossPrice = BigDecimal.valueOf(closePrice).multiply(stopLossRatio);
 

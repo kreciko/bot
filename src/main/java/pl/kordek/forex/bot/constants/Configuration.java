@@ -29,9 +29,9 @@ public interface Configuration {
         "USDSEK","NZDCHF","GBPNZD","EURSEK","CHFJPY","NZDJPY","EURNZD","AUDCHF","EURAUD","USDSGD","USDNOK","GBPAUD","CADCHF",
     "EURCAD","AUDNZD","AUDCAD","GBPCAD","EURNOK","USDIDX","CADJPY","AUDJPY","NZDCAD"};
 
-	String[] customCmd = {"OIL", "GOLD", "SILVER", "PLATINUM"};
+	String[] customCmd = {"OIL", "GOLD"};
 
-	String[] instrumentsFX = majorFX;//ArrayUtils.addAll(majorFX, customCmd);
+	String[] instrumentsFX = ArrayUtils.addAll(majorFX, customCmd);
 
     PERIOD_CODE candlePeriod = PERIOD_CODE.PERIOD_M15;
     PERIOD_CODE helperCandlePeriod = PERIOD_CODE.PERIOD_M30;
@@ -44,20 +44,22 @@ public interface Configuration {
     //multiplicand of stoploss to estimate take profit
     Double takeProfitVsStopLossCoeff = 1.5;
 
-    Double stopLossPrc = 0.35;
-    Boolean stopLossSetToSupport = true;
-    Double takeProfitPrc = stopLossPrc*takeProfitVsStopLossCoeff;
+    Double stopLossMaxPrcFX = 0.15;
+    Double stopLossMaxPrcOthers = 0.5;
+    Boolean stopLossSetToLastCandle = true;
 
-    Boolean updateStopLoss = false;
+    Boolean updateStopLoss = true;
 
     int stopLossBarCount = 7;
 
-    Double acceptableSpread = 2.5;
+    Double acceptableSpreadVsAtr = 0.5;
 
     //test vars
-    Boolean runTest = true;
-    String runTestFX = "EURUSD";
-    int testedIndex = 1;
+    Boolean runTest = false;
+    String runTestFX = "GOLD";
+    int testedIndex = 33;
 
     Boolean runBot = true;
+
+    Boolean considerStratetyStrength = false;
 }

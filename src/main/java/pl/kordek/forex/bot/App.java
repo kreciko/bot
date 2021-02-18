@@ -26,11 +26,13 @@ import java.util.Map.Entry;
 import java.util.Set;
 
 import org.ta4j.core.Bar;
+import org.ta4j.core.BarSeries;
 import org.ta4j.core.BaseBar;
 import org.ta4j.core.BaseBarSeries;
 import org.ta4j.core.BaseTradingRecord;
 import org.ta4j.core.Order.OrderType;
 import org.ta4j.core.TradingRecord;
+import org.ta4j.core.indicators.ATRIndicator;
 
 import pl.kordek.forex.bot.constants.Configuration;
 import pl.kordek.forex.bot.domain.BlackListOperation;
@@ -70,6 +72,7 @@ public class App {
 	private static HashMap<String, TradingRecord> longTradingRecordsMap = null;
 	private static HashMap<String, TradingRecord> shortTradingRecordsMap = null;
 	private static List<TradeRecord> openedPositions = new ArrayList<>();
+	private static List<String> spreadTooLargeSymbols = new ArrayList<>();;
 	private static HashMap<String,BlackListOperation> blackList = null;
 	private static int robotIteration = 0;
 
@@ -112,7 +115,6 @@ public class App {
 			for (String symbol : Configuration.instrumentsFX) {
 				SymbolResponse sr = APICommandFactory.executeSymbolCommand(connector, symbol);
 
-
 				int endIndex = baseBarSeriesMap.get(symbol).getEndIndex();
 				longTRecordUpdateNeeded = updateTradingRecord(endIndex, symbol, longTradingRecordsMap.get(symbol));
 				shortTRecordUpdateNeeded = updateTradingRecord(endIndex, symbol, shortTradingRecordsMap.get(symbol));
@@ -141,6 +143,7 @@ public class App {
 			System.out.print(new Date() + ": "+robotIteration+" robot iteration. Positions opened: "
 					+ openedPositions.stream().map(e -> e.getSymbol()).collect(toList()));
 			System.out.println(" Black list: "+blackList.values().stream().map(e -> e.getInstrument() + " " + e.getTypeOfOperation()).collect(toList()));
+			System.out.println(new Date() + ": Spread too wide for following:"+spreadTooLargeSymbols);
 			System.out.println();
 
 		} catch (XTBCommunicationException xtbEx) {
@@ -160,15 +163,15 @@ public class App {
 			return true;
 		}
 		try {
-		//check if trading record has a trade that is opened (not new), but it's not existing in XTB
-		if(!tradingRecord.getCurrentTrade().isNew() && !openedPositions.stream().map(e -> e.getSymbol()).anyMatch(e -> e.equals(symbol))) {
-			System.out.println(new Date() + ": Trade record was outdated for symbol "+symbol+". Updating the trade record");
-			boolean exited = tradingRecord.exit(endIndex);
-			if(!exited) {
-				System.out.println(new Date() + ": Exit not successful");
+			//check if trading record has a trade that is opened (not new), but it's not existing in XTB
+			if(!tradingRecord.getCurrentTrade().isNew() && !openedPositions.stream().map(e -> e.getSymbol()).anyMatch(e -> e.equals(symbol))) {
+				System.out.println(new Date() + ": Trade record was outdated for symbol "+symbol+". Updating the trade record");
+				boolean exited = tradingRecord.exit(endIndex);
+				if(!exited) {
+					System.out.println(new Date() + ": Exit not successful");
+				}
+				return true;
 			}
-			return true;
-		}
 		}
 		catch(Exception ex) {
 			System.out.println(new Date() +": Update trade record Exception:" + ex.getMessage());
@@ -367,6 +370,18 @@ public class App {
 	}
 
 	private static boolean isSpreadAcceptable(SymbolResponse sr) {
-		return sr.getSymbol().getSpreadTable() <= Configuration.acceptableSpread;
+		Integer precisionNumber = sr.getSymbol().getPrecision();
+		BarSeries series = baseBarSeriesMap.get(sr.getSymbol().getSymbol());
+		ATRIndicator atr = new ATRIndicator(series, 14);
+		BigDecimal atrVal = BigDecimal.valueOf(atr.getValue(series.getEndIndex()).doubleValue()).scaleByPowerOfTen(-precisionNumber);
+		BigDecimal spread = BigDecimal.valueOf(sr.getSymbol().getSpreadRaw());
+
+		BigDecimal atrVsSpread = spread.divide(atrVal, 2, RoundingMode.HALF_UP);
+
+		if(atrVsSpread.doubleValue() > Configuration.acceptableSpreadVsAtr) {
+			spreadTooLargeSymbols.add(sr.getSymbol().getSymbol()+":"+atrVsSpread.doubleValue());
+			return false;
+		}
+		return true;
 	}
 }

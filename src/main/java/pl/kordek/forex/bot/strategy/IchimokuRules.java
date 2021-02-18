@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 
 import org.ta4j.core.BaseBarSeries;
+import org.ta4j.core.Indicator;
 import org.ta4j.core.Rule;
 import org.ta4j.core.indicators.helpers.ClosePriceIndicator;
 import org.ta4j.core.indicators.helpers.ConstantIndicator;
@@ -13,6 +14,7 @@ import org.ta4j.core.indicators.ichimoku.IchimokuKijunSenIndicator;
 import org.ta4j.core.indicators.ichimoku.IchimokuSenkouSpanAIndicator;
 import org.ta4j.core.indicators.ichimoku.IchimokuSenkouSpanBIndicator;
 import org.ta4j.core.indicators.ichimoku.IchimokuTenkanSenIndicator;
+import org.ta4j.core.num.Num;
 import org.ta4j.core.trading.rules.BooleanRule;
 import org.ta4j.core.trading.rules.CrossedDownIndicatorRule;
 import org.ta4j.core.trading.rules.CrossedUpIndicatorRule;
@@ -40,6 +42,9 @@ public class IchimokuRules {
 	private Rule tenkanOverCloudRule;
 	private Rule tenkanUnderCloudRule;
 
+	//INDICATORS
+	private IchimokuTenkanSenIndicator tenkanSen;
+
 
 
 	public IchimokuRules(int index,BaseBarSeries series, BaseBarSeries helperSeries) {
@@ -56,7 +61,7 @@ public class IchimokuRules {
 		ClosePriceIndicator closePrice = new ClosePriceIndicator(series);
 		ClosePriceIndicator closePriceHelper = new ClosePriceIndicator(helperSeries);
 
-		IchimokuTenkanSenIndicator tenkanSen = new IchimokuTenkanSenIndicator(series, 9);
+		tenkanSen = new IchimokuTenkanSenIndicator(series, 9);
 		IchimokuKijunSenIndicator kijunSen = new IchimokuKijunSenIndicator(series, 26);
 		IchimokuSenkouSpanAIndicator senkouSpanA = new IchimokuSenkouSpanAIndicator(series, tenkanSen, kijunSen);
 		IchimokuSenkouSpanBIndicator senkouSpanB = new IchimokuSenkouSpanBIndicator(series, 52);
@@ -168,6 +173,10 @@ public class IchimokuRules {
 
 	public Rule getTenkanUnderCloudRule() {
 		return tenkanUnderCloudRule;
+	}
+
+	public IchimokuTenkanSenIndicator getTenkanSen() {
+		return tenkanSen;
 	}
 
 

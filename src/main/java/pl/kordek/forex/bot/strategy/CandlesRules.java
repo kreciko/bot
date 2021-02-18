@@ -2,7 +2,6 @@ package pl.kordek.forex.bot.strategy;
 
 import org.ta4j.core.BaseBarSeries;
 import org.ta4j.core.Rule;
-import org.ta4j.core.indicators.CachedIndicator;
 import org.ta4j.core.indicators.EMAIndicator;
 import org.ta4j.core.indicators.candles.BearishEngulfingIndicator;
 import org.ta4j.core.indicators.candles.BearishHaramiIndicator;
@@ -19,20 +18,21 @@ import org.ta4j.core.indicators.helpers.DifferenceIndicator;
 import org.ta4j.core.indicators.helpers.HighPriceIndicator;
 import org.ta4j.core.indicators.helpers.HighestValueIndicator;
 import org.ta4j.core.indicators.helpers.LowPriceIndicator;
-import org.ta4j.core.indicators.helpers.LowestValueIndicator;
 import org.ta4j.core.indicators.helpers.PreviousValueIndicator;
 import org.ta4j.core.indicators.helpers.SatisfiedCountIndicator;
 import org.ta4j.core.indicators.helpers.SumIndicator;
 import org.ta4j.core.num.DoubleNum;
-import org.ta4j.core.num.Num;
 import org.ta4j.core.trading.rules.BooleanIndicatorRule;
-import org.ta4j.core.trading.rules.BooleanRule;
+import org.ta4j.core.trading.rules.CrossedDownIndicatorRule;
+import org.ta4j.core.trading.rules.CrossedUpIndicatorRule;
+import org.ta4j.core.trading.rules.IsFallingRule;
 import org.ta4j.core.trading.rules.IsHighestRule;
 import org.ta4j.core.trading.rules.IsLowestRule;
+import org.ta4j.core.trading.rules.IsRisingRule;
 import org.ta4j.core.trading.rules.OverIndicatorRule;
 import org.ta4j.core.trading.rules.UnderIndicatorRule;
 
-public class CandlesRulesBuilder {
+public class CandlesRules {
 	private BaseBarSeries series;
 	private Rule threeWhiteSoldiersRule;
 	private Rule threeBlackCrowsRule;
@@ -47,16 +47,15 @@ public class CandlesRulesBuilder {
 	private Rule bullishShrinkingCandlesRule;
 	private Rule bearishShrinkingCandlesRule;
 	private Rule customPriceActionLongRule;
-	private Rule longSignalsPrevailRule;
 	private Rule customPriceActionShortRule;
-	private Rule shortSignalsPrevailRule;
 
 	private SumIndicator longEntrySignals;
 	private SumIndicator shortEntrySignals;
+	private DifferenceIndicator longMinusShortSignals;
 
-	public CandlesRulesBuilder(BaseBarSeries series) {
+	public CandlesRules(BaseBarSeries series) {
 		this.series = series;
-
+		ClosePriceIndicator closePrice = new ClosePriceIndicator(series);
 
 		BearishEngulfingIndicator bearishEngulfingInd = new BearishEngulfingIndicator(series);
 		BullishEngulfingIndicator bullishEngulfingInd = new BullishEngulfingIndicator(series);
@@ -72,8 +71,15 @@ public class CandlesRulesBuilder {
 		BearishPinBarIndicator bearishPinBarIndicator = new BearishPinBarIndicator(series, 0.6);
 		BullishPinBarIndicator bullishPinBarIndicator = new BullishPinBarIndicator(series, 0.6);
 
+		PreviousValueIndicator<Boolean> prevBullishPinBarIndicator = new PreviousValueIndicator<>(bullishPinBarIndicator);
+
+		PreviousValueIndicator<Boolean> prevBearishPinBarIndicator = new PreviousValueIndicator<>(bearishPinBarIndicator);
+
 		BullishShrinkingCandlesIndicator bullishShrinkingCandlesIndicator = new BullishShrinkingCandlesIndicator(series, 3, true);
 		BearishShrinkingCandlesIndicator bearishShrinkingCandlesIndicator = new BearishShrinkingCandlesIndicator(series, 3, true);
+
+		IsFallingRule isFalling = new IsFallingRule(closePrice, 1);
+        IsRisingRule isRising = new IsRisingRule(closePrice, 1);
 
 		bearishEngulfingRule = new BooleanIndicatorRule(bearishEngulfingInd);
 		bullishEngulfingRule = new BooleanIndicatorRule(bullishEngulfingInd);
@@ -83,8 +89,8 @@ public class CandlesRulesBuilder {
 		threeWhiteSoldiersRule = new BooleanIndicatorRule(threeWhiteSoldiersInd);
 		bullishHaramiRule = new BooleanIndicatorRule(bullishHaramiIndicator);
 		bearishHaramiRule = new BooleanIndicatorRule(bearishHaramiIndicator);
-		bullishPinBarRule = new BooleanIndicatorRule(bullishPinBarIndicator);
-		bearishPinBarRule = new BooleanIndicatorRule(bearishPinBarIndicator);
+		bullishPinBarRule = new BooleanIndicatorRule(prevBullishPinBarIndicator).and(isRising);
+		bearishPinBarRule = new BooleanIndicatorRule(prevBearishPinBarIndicator).and(isFalling);
 		bullishShrinkingCandlesRule = new BooleanIndicatorRule(bullishShrinkingCandlesIndicator);
 		bearishShrinkingCandlesRule = new BooleanIndicatorRule(bearishShrinkingCandlesIndicator);
 
@@ -107,7 +113,7 @@ public class CandlesRulesBuilder {
 		this.longEntrySignals = new SumIndicator(satisfiedBullishPinbars, satisfiedBullishEngulfing, satisfiedBullishHarami, satisfiedBearishShrinkingCandles);
 		this.shortEntrySignals = new SumIndicator(satisfiedBearishPinbars, satisfiedBearishEngulfing, satisfiedBearishHarami, satisfiedBullishShrinkingCandles);
 
-		DifferenceIndicator difference = new DifferenceIndicator(longEntrySignals, shortEntrySignals);
+		this.longMinusShortSignals = new DifferenceIndicator(longEntrySignals, shortEntrySignals);
 
 		LowPriceIndicator lowPrice = new LowPriceIndicator(series);
 		HighPriceIndicator highPrice = new HighPriceIndicator(series);
@@ -123,14 +129,11 @@ public class CandlesRulesBuilder {
 		EMAIndicator shortEma = new EMAIndicator(closePrice, 7);
         EMAIndicator longEma = new EMAIndicator(closePrice, 14);
 
+		customPriceActionLongRule = (new UnderIndicatorRule(closePrice, longEma).or(new CrossedUpIndicatorRule(closePrice, longEma)))
+				.and((bullishPinBarRule.and(getLongSignalsPrevailRule(2))).or(bullishEngulfingRule.and(getLongSignalsPrevailRule(1))));
 
-		longSignalsPrevailRule = new OverIndicatorRule(difference, DoubleNum.valueOf(1));
-		customPriceActionLongRule = isLowest
-				.and(bullishPinBarRule.or(bullishEngulfingRule)).and(new UnderIndicatorRule(closePrice, longEma));
-
-		shortSignalsPrevailRule = new UnderIndicatorRule(difference, DoubleNum.valueOf(-1));
-		customPriceActionShortRule = isHighest
-				.and(bearishPinBarRule.or(bearishEngulfingRule)).and(new OverIndicatorRule(closePrice, longEma));
+		customPriceActionShortRule = (new OverIndicatorRule(closePrice, longEma).or(new CrossedDownIndicatorRule(closePrice, longEma)))
+				.and((bearishPinBarRule.and(getShortSignalsPrevailRule(2))).or(bearishEngulfingRule.and(getShortSignalsPrevailRule(1))));
 	}
 
 	public Rule getThreeWhiteSoldiersRule() {
@@ -187,12 +190,13 @@ public class CandlesRulesBuilder {
 		return customPriceActionShortRule;
 	}
 
-	public Rule getLongSignalsPrevailRule() {
-		return longSignalsPrevailRule;
+	public Rule getLongSignalsPrevailRule(int minDifference) {
+		//we subtract 1 because its "OverIndicator"
+		return new OverIndicatorRule(longMinusShortSignals, DoubleNum.valueOf(minDifference - 1));
 	}
 
-	public Rule getShortSignalsPrevailRule() {
-		return shortSignalsPrevailRule;
+	public Rule getShortSignalsPrevailRule(int minDifference) {
+		return new UnderIndicatorRule(longMinusShortSignals, DoubleNum.valueOf(minDifference - 1));
 	}
 
 	public SumIndicator getLongEntrySignals() {

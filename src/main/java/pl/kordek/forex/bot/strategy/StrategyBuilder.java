@@ -1,5 +1,8 @@
 package pl.kordek.forex.bot.strategy;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import org.ta4j.core.BaseBarSeries;
 import org.ta4j.core.BaseStrategy;
 import org.ta4j.core.Indicator;
@@ -10,6 +13,8 @@ import org.ta4j.core.indicators.EMAIndicator;
 import org.ta4j.core.indicators.MACDIndicator;
 import org.ta4j.core.indicators.candles.BullishPinBarIndicator;
 import org.ta4j.core.indicators.candles.CandleSizeIndicator;
+import org.ta4j.core.indicators.donchian.DonchianChannelLowerIndicator;
+import org.ta4j.core.indicators.donchian.DonchianChannelUpperIndicator;
 import org.ta4j.core.indicators.helpers.ClosePriceIndicator;
 import org.ta4j.core.indicators.helpers.DifferenceIndicator;
 import org.ta4j.core.indicators.helpers.DifferencePercentage;
@@ -32,84 +37,94 @@ import org.ta4j.core.trading.rules.TrailingStopLossRule;
 import org.ta4j.core.trading.rules.UnderIndicatorRule;
 
 import pl.kordek.forex.bot.constants.Configuration;
+import pro.xstore.api.message.codes.TRADE_OPERATION_CODE;
 
 
 public class StrategyBuilder {
 
+	private ClosePriceIndicator closePrice;
+	private PreviousValueIndicator<Num> prevClosePrice;
+	private EMAIndicator trendLine;
 
-	public static Strategy buildLongStrategy(int index, BaseBarSeries series, BaseBarSeries helperSeries) {
+	private IchimokuRules ichimokuRules;
+	private CandlesRules candlesRules;
+
+	private MACDIndicator macd;
+	private EMAIndicator signal;
+
+	private DonchianChannelLowerIndicator donchianLower;
+	private DonchianChannelUpperIndicator donchianUpper;
+
+
+
+	public StrategyBuilder(int index, BaseBarSeries series, BaseBarSeries helperSeries) {
 		if (series == null) {
 			throw new IllegalArgumentException("Series cannot be null");
 		}
-		ClosePriceIndicator closePrice = new ClosePriceIndicator(series);
-		PreviousValueIndicator<Num> prevClosePrice = new PreviousValueIndicator<>(closePrice);
-		IchimokuRules ichimokuRules = new IchimokuRules(index, series, helperSeries);
-		CandlesRulesBuilder candlesRules = new CandlesRulesBuilder(series);
 
+		this.closePrice = new ClosePriceIndicator(series);
+		this.prevClosePrice = new PreviousValueIndicator<>(closePrice);
+		this.trendLine = new EMAIndicator(closePrice, 200);
+		this.ichimokuRules = new IchimokuRules(index, series, helperSeries);
+		this.candlesRules = new CandlesRules(series);
+		this.macd = new MACDIndicator(closePrice, 12 , 26);
+		this.signal = new EMAIndicator(macd, 9);
+		this.donchianLower = new DonchianChannelLowerIndicator(series, 20);
+		this.donchianUpper = new DonchianChannelUpperIndicator(series, 20);
+	}
+
+	public List<Strategy> buildLongStrategies() {
 		//MACD Strategy
-		MACDIndicator macd = new MACDIndicator(closePrice, 12 , 26);
-        EMAIndicator signal = new EMAIndicator(macd, 9);
-        EMAIndicator trendLine = new EMAIndicator(closePrice, 200);
         Rule macdEntry = new OverIndicatorRule(closePrice, trendLine).and(new CrossedUpIndicatorRule(macd, signal))
                 .and(new UnderIndicatorRule(macd, DoubleNum.valueOf(0)));
 
-      //Ichimoku Strategy
+        //Donchian Strategy
+        Rule donchianEntry = new OverIndicatorRule(closePrice, trendLine);
+
+        //Ichimoku Strategy
         Rule priceOverCloud = ichimokuRules.getPriceOverCloud();
         Rule tenkanCrossesKijunUp = ichimokuRules.getTenkanCrossesKijunUpRule();
-        Rule trendBullishConfirmed= ichimokuRules.getTrendBullishConfirmed();
         Rule cloudBullish = ichimokuRules.getCloudBullish();
+        Rule ichimokuEntry = cloudBullish.and(priceOverCloud).and(tenkanCrossesKijunUp)
+        		.and(new OverIndicatorRule(closePrice, trendLine)).and(new OverIndicatorRule(closePrice, ichimokuRules.getTenkanSen()));
 
-      //Candle
-        Rule longSignalsPrevail = candlesRules.getLongSignalsPrevailRule();
+
+        List<Strategy> strategies = new ArrayList<>();
+
+        strategies.add(new BaseStrategy("Ichimoku", ichimokuEntry, new BooleanRule(false)));
+        strategies.add(new BaseStrategy("MACD", macdEntry, new BooleanRule(false)));
 
 
-        Rule entryRule = cloudBullish.and(priceOverCloud).and(candlesRules.getCustomPriceActionLongRule()).and(longSignalsPrevail);
-		//Rule entryRule = trendBullishConfirmed.and(tenkanOverCloud).and(tenkanCrossesKijunUp.or(macdEntry));
-
-		Rule exitRule = new BooleanRule(false);
-		return new BaseStrategy(entryRule, exitRule);
+		return strategies;
 	}
 
-	public static Strategy buildShortStrategy(int index, BaseBarSeries series, BaseBarSeries helperSeries) {
-		if (series == null) {
-			throw new IllegalArgumentException("Series cannot be null");
-		}
-		ClosePriceIndicator closePrice = new ClosePriceIndicator(series);
-		PreviousValueIndicator<Num> prevClosePrice = new PreviousValueIndicator<>(closePrice);
-
-		IchimokuRules ichimokuRules = new IchimokuRules(index, series, helperSeries);
-		CandlesRulesBuilder candlesRules = new CandlesRulesBuilder(series);
-
-		//MACD Strategy
-		MACDIndicator macd = new MACDIndicator(closePrice, 12 , 26);
-        EMAIndicator signal = new EMAIndicator(macd, 9);
-        EMAIndicator trendLine = new EMAIndicator(closePrice, 200);
-        Rule macdEntry = new UnderIndicatorRule(closePrice, trendLine).and(new CrossedDownIndicatorRule(macd, signal))
+	public List<Strategy> buildShortStrategies() {
+        //MACD Strategy
+		Rule macdEntry = new UnderIndicatorRule(closePrice, trendLine).and(new CrossedDownIndicatorRule(macd, signal))
                 .and(new OverIndicatorRule(macd, DoubleNum.valueOf(0)));
 
         //Ichimoku Strategy
         Rule priceUnderCloud = ichimokuRules.getPriceUnderCloud();
         Rule tenkanCrossesKijunDown = ichimokuRules.getTenkanCrossesKijunDownRule();
-        Rule trendBearishConfirmed= ichimokuRules.getTrendBearishConfirmed();
         Rule cloudBearish = ichimokuRules.getCloudBearish();
+        Rule ichimokuEntry = cloudBearish.and(priceUnderCloud).and(tenkanCrossesKijunDown)
+        		.and(new UnderIndicatorRule(closePrice, trendLine)).and(new UnderIndicatorRule(closePrice, ichimokuRules.getTenkanSen()));
 
+		List<Strategy> strategies = new ArrayList<>();
 
-        //Candle
-        Rule shortSignalsPrevail = candlesRules.getShortSignalsPrevailRule();
+        strategies.add(new BaseStrategy("Ichimoku", ichimokuEntry, new BooleanRule(false)));
+        strategies.add(new BaseStrategy("MACD", macdEntry, new BooleanRule(false)));
 
-        Rule entryRule = cloudBearish.and(priceUnderCloud).and(candlesRules.getCustomPriceActionShortRule()).and(shortSignalsPrevail);
-        //Rule entryRule = trendBearishConfirmed.and(tenkanUnderCloud).and(tenkanCrossesKijunDown.or(macdEntry));
-		Rule exitRule = new BooleanRule(false);
-
-		return new BaseStrategy(entryRule, exitRule);
+		return strategies;
 	}
 
-	//
-	public static double assessStrategyStrength(OrderType orderType, BaseBarSeries series) {
 
-		CandlesRulesBuilder candlesRules = new CandlesRulesBuilder(series);
-		Rule strategyStrong = orderType == OrderType.BUY ? candlesRules.getLongSignalsPrevailRule() : candlesRules.getShortSignalsPrevailRule();
-		Rule strategyWeak = orderType == OrderType.BUY ? candlesRules.getShortSignalsPrevailRule() : candlesRules.getLongSignalsPrevailRule();
+	//
+	public static double assessStrategyStrength(TRADE_OPERATION_CODE operationCode, BaseBarSeries series) {
+
+		CandlesRules candlesRules = new CandlesRules(series);
+		Rule strategyStrong = operationCode == TRADE_OPERATION_CODE.BUY ? candlesRules.getLongSignalsPrevailRule(2) : candlesRules.getShortSignalsPrevailRule(2);
+		Rule strategyWeak = operationCode == TRADE_OPERATION_CODE.BUY ? candlesRules.getShortSignalsPrevailRule(2) : candlesRules.getLongSignalsPrevailRule(2);
 
 		if(strategyStrong.isSatisfied(series.getEndIndex())) {
 			return 1.5;
