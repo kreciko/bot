@@ -24,14 +24,14 @@ public interface Configuration {
 
 	String[] customFX = {"EURUSD", "USDCHF"};
 	String[] halfMajorFX = {"AUDUSD","EURGBP","EURJPY","EURUSD","GBPCHF","GBPJPY"} ;
-	String[] majorFX = {"AUDUSD","EURCHF","EURGBP","EURJPY","EURUSD","GBPCHF","GBPJPY","GBPUSD","NZDUSD","USDCAD","USDCHF","USDJPY"};
+	String[] majorFX = {"AUDUSD","EURCHF","EURGBP","EURJPY","EURUSD","GBPCHF","GBPJPY","GBPUSD","NZDUSD", "USDCHF","USDJPY", "USDCAD"};
 	String[] allFX = {"AUDUSD","EURGBP","EURJPY","EURUSD","GBPCHF","GBPJPY","GBPUSD","NZDUSD","USDCAD","USDCHF","USDJPY",
         "USDSEK","NZDCHF","GBPNZD","EURSEK","CHFJPY","NZDJPY","EURNZD","AUDCHF","EURAUD","USDSGD","USDNOK","GBPAUD","CADCHF",
     "EURCAD","AUDNZD","AUDCAD","GBPCAD","EURNOK","USDIDX","CADJPY","AUDJPY","NZDCAD"};
 
 	String[] customCmd = {"OIL", "GOLD"};
 
-	String[] instrumentsFX = ArrayUtils.addAll(majorFX, customCmd);
+	String[] instrumentsFX = majorFX;
 
     PERIOD_CODE candlePeriod = PERIOD_CODE.PERIOD_M15;
     PERIOD_CODE helperCandlePeriod = PERIOD_CODE.PERIOD_M30;
@@ -44,22 +44,24 @@ public interface Configuration {
     //multiplicand of stoploss to estimate take profit
     Double takeProfitVsStopLossCoeff = 1.5;
 
-    Double stopLossMaxPrcFX = 0.15;
+    Double stopLossMaxPrcFX = 0.2;
     Double stopLossMaxPrcOthers = 0.5;
     Boolean stopLossSetToLastCandle = true;
 
     Boolean updateStopLoss = true;
 
-    int stopLossBarCount = 7;
+    int stopLossBarCount = 14;
 
     Double acceptableSpreadVsAtr = 0.5;
 
     //test vars
     Boolean runTest = false;
-    String runTestFX = "GOLD";
-    int testedIndex = 33;
+    String runTestFX = "USDJPY";
+    int testedIndex = 0;
 
     Boolean runBot = true;
 
     Boolean considerStratetyStrength = false;
+
+    Double minWinningRate = 0.48;
 }

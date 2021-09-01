@@ -1,4 +1,4 @@
-package pl.kordek.forex.bot.strategy;
+package pl.kordek.forex.bot.rules;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;

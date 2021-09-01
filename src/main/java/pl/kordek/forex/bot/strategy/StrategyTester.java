@@ -10,23 +10,34 @@ import org.ta4j.core.Strategy;
 import org.ta4j.core.TradingRecord;
 import org.ta4j.core.Order.OrderType;
 import org.ta4j.core.indicators.EMAIndicator;
+import org.ta4j.core.indicators.EMASmartIndicator;
 import org.ta4j.core.indicators.MACDIndicator;
 import org.ta4j.core.indicators.candles.BearishEngulfingIndicator;
 import org.ta4j.core.indicators.candles.BullishEngulfingIndicator;
 import org.ta4j.core.indicators.candles.BullishShrinkingCandlesIndicator;
+import org.ta4j.core.indicators.donchian.DonchianChannelLowerIndicator;
+import org.ta4j.core.indicators.donchian.DonchianChannelUpperIndicator;
+import org.ta4j.core.indicators.donchian.DonchianFallingBarCountIndicator;
+import org.ta4j.core.indicators.donchian.DonchianIsFallingIndicator;
+import org.ta4j.core.indicators.donchian.DonchianIsRisingIndicator;
+import org.ta4j.core.indicators.donchian.DonchianRisingBarCountIndicator;
 import org.ta4j.core.indicators.helpers.ClosePriceIndicator;
 import org.ta4j.core.indicators.helpers.ConstantIndicator;
 import org.ta4j.core.indicators.helpers.HighPriceIndicator;
 import org.ta4j.core.indicators.helpers.LowPriceIndicator;
 import org.ta4j.core.indicators.helpers.OpenPriceIndicator;
-import org.ta4j.core.indicators.helpers.StopLossSmartIndicator;
+import org.ta4j.core.indicators.helpers.PreviousValueIndicator;
+import org.ta4j.core.indicators.helpers.SatisfiedCountIndicator;
+import org.ta4j.core.indicators.helpers.StopLossPrcSmartIndicator;
 import org.ta4j.core.indicators.ichimoku.IchimokuChikouSpanIndicator;
 import org.ta4j.core.indicators.ichimoku.IchimokuKijunSenIndicator;
 import org.ta4j.core.indicators.ichimoku.IchimokuSenkouSpanAIndicator;
 import org.ta4j.core.indicators.ichimoku.IchimokuSenkouSpanBIndicator;
 import org.ta4j.core.indicators.ichimoku.IchimokuTenkanSenIndicator;
 import org.ta4j.core.num.DoubleNum;
+import org.ta4j.core.num.Num;
 import org.ta4j.core.trading.rules.BooleanIndicatorRule;
+import org.ta4j.core.trading.rules.BooleanRule;
 import org.ta4j.core.trading.rules.CrossedDownIndicatorRule;
 import org.ta4j.core.trading.rules.IsFallingRule;
 import org.ta4j.core.trading.rules.IsHighestRule;
@@ -36,6 +47,8 @@ import org.ta4j.core.trading.rules.TrailingStopLossRule;
 import org.ta4j.core.trading.rules.UnderIndicatorRule;
 
 import pl.kordek.forex.bot.constants.Configuration;
+import pl.kordek.forex.bot.rules.CandlesRules;
+import pl.kordek.forex.bot.rules.IchimokuRules;
 
 public class StrategyTester {
 	private BaseBarSeries series = null;
@@ -57,10 +70,10 @@ public class StrategyTester {
 		ClosePriceIndicator closePrice = new ClosePriceIndicator(series);
 
 		for(Strategy shortStrat : shortStrategies) {
-			System.out.println(shortStrat.getName()+"Should enter short for: " + symbol + " index:" + index + " price:" + closePrice.getValue(index)
+			System.out.println(shortStrat.getName()+" Should enter short for: " + symbol + " index:" + index + " price:" + closePrice.getValue(index)
 					+ " = " + shortStrat.shouldEnter(index));
 		}
-		for(Strategy longStrat : shortStrategies) {
+		for(Strategy longStrat : longStrategies) {
 			System.out.println(longStrat.getName()+" Should enter long for: " + symbol + " index:" + index + " price:" + closePrice.getValue(index)
 				+ " = " + longStrat.shouldEnter(index));
 		}
@@ -70,7 +83,7 @@ public class StrategyTester {
 		IchimokuRules ichimokuRules = new IchimokuRules(index, series, helperSeries);
 
 		OrderType orderType = OrderType.BUY;
-		StopLossSmartIndicator slIndicator = new StopLossSmartIndicator(series, Configuration.stopLossMaxPrcFX, OrderType.BUY, 7);
+		StopLossPrcSmartIndicator slIndicator = new StopLossPrcSmartIndicator(series, Configuration.stopLossMaxPrcFX, OrderType.BUY, 7);
 		double stopLossWithoutPrecision = slIndicator.getValue(index).doubleValue();//StopLossHelper.getNewStopLoss(index, series, orderType, 7).doubleValue();
 
 
@@ -84,10 +97,37 @@ public class StrategyTester {
 		System.out.println("StopLoss for index for orderType "+orderType+": " + stopLossWithoutPrecision);
 
 
+		MACDIndicator macd = new MACDIndicator(closePrice, 12 , 26);
 
+		DonchianChannelLowerIndicator donchianLower = new DonchianChannelLowerIndicator(series, 20);
+		DonchianChannelUpperIndicator donchianUpper = new DonchianChannelUpperIndicator(series, 20);
+		DonchianIsRisingIndicator isUpperDRising = new DonchianIsRisingIndicator(donchianUpper);
+		DonchianIsFallingIndicator isUpperDFalling = new DonchianIsFallingIndicator(donchianUpper);
+		DonchianIsFallingIndicator isLowerDFalling = new DonchianIsFallingIndicator(donchianLower);
+		DonchianRisingBarCountIndicator dRisingCount = new DonchianRisingBarCountIndicator(donchianUpper);
 
-		System.out.println("trend bullish confirmed: " + trendBullishConfirmed.isSatisfied(index));
-		System.out.println("trend bearish confirmed: " + trendBearishConfirmed.isSatisfied(index));
+		PreviousValueIndicator<Boolean> wasUpperDFalling = new PreviousValueIndicator<>(isUpperDFalling);
+		PreviousValueIndicator<Num> prevUpperD = new PreviousValueIndicator<>(donchianUpper);
+		DonchianFallingBarCountIndicator upperDFallingCount = new DonchianFallingBarCountIndicator(prevUpperD);
+
+		Rule wasLowerDFallingInTheMeantime =  new OverIndicatorRule(new SatisfiedCountIndicator(isLowerDFalling, upperDFallingCount), 0);
+
+		Rule donchianEntry = new BooleanIndicatorRule(wasUpperDFalling).and(new BooleanIndicatorRule(isUpperDRising))
+				.and(wasLowerDFallingInTheMeantime);
+
+		System.out.println("Donchian lower: " + donchianLower.getValue(index));
+		System.out.println("Donchian upper: " + donchianUpper.getValue(index));
+		System.out.println("Upper isUpperDRising: " + isUpperDRising.getValue(index));
+		System.out.println("Upper wasUpperDFalling: " + wasUpperDFalling.getValue(index));
+		System.out.println("Upper D Falling Count: " + upperDFallingCount.getValue(index));
+		System.out.println("wasLowerDFallingInTheMeantime: " + wasLowerDFallingInTheMeantime.isSatisfied(index));
+		System.out.println("Donchian entry: " + donchianEntry.isSatisfied(index));
+
+		EMASmartIndicator emaMagic = new EMASmartIndicator(closePrice, 200);
+		EMASmartIndicator emaMagic50 = new EMASmartIndicator(closePrice, 50);
+		System.out.println("Ema magic: " + emaMagic.getValue(index));
+		System.out.println("Ema magic 50: " + emaMagic.getValue(index));
+		System.out.println("Over: " + new OverIndicatorRule(emaMagic, 149).isSatisfied(index));
 
 
 	}

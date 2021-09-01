@@ -1,4 +1,4 @@
-package pl.kordek.forex.bot.strategy;
+package pl.kordek.forex.bot.rules;
 
 import org.ta4j.core.BaseBarSeries;
 import org.ta4j.core.Rule;

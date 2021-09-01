@@ -54,6 +54,28 @@
 		    <version>3.9</version>
 		</dependency>
 
+		<dependency>
+		    <groupId>io.jenetics</groupId>
+		    <artifactId>jenetics</artifactId>
+		    <version>6.2.0</version>
+		</dependency>
+
+        <dependency>
+            <groupId>com.opencsv</groupId>
+            <artifactId>opencsv</artifactId>
+            <version>3.9</version>
+        </dependency>
+
+		<dependency>
+			<groupId>com.google.apis</groupId>
+			<artifactId>google-api-services-alertcenter</artifactId>
+			<version>v1beta1-rev20210406-1.31.0</version>
+		</dependency>
+		<dependency>
+			<groupId>com.google.oauth-client</groupId>
+			<artifactId>google-oauth-client</artifactId>
+			<version>1.31.0</version>
+		</dependency>
 	</dependencies>
 
 	<build>
