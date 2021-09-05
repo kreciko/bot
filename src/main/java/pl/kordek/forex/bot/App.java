@@ -35,10 +35,13 @@ import org.ta4j.core.BaseBarSeries;
 import org.ta4j.core.BaseTradingRecord;
 import org.ta4j.core.Order.OrderType;
 import org.ta4j.core.TradingRecord;
+import org.ta4j.core.analysis.criteria.AverageProfitableTradesCriterion;
 import org.ta4j.core.indicators.ATRIndicator;
 
 import com.opencsv.CSVReader;
 
+import org.ta4j.core.num.Num;
+import pl.kordek.forex.bot.api.XTB;
 import pl.kordek.forex.bot.constants.Configuration;
 import pl.kordek.forex.bot.domain.BlackListOperation;
 import pl.kordek.forex.bot.domain.RobotInfo;
@@ -101,8 +104,6 @@ public class App {
 			//if we don't run test then wait longer for the data to be updated in the XTB system
 			if(Configuration.runTest) {
 				Thread.sleep(1000);
-				NotificationService notification = new NotificationService();
-				notification.sendMessage();
 			}
 			else
 				Thread.sleep(120000);
@@ -124,9 +125,9 @@ public class App {
 
 			for (String symbol : Configuration.instrumentsFX) {
 				updatedTradeRecord = false;
-				SymbolResponse sr = APICommandFactory.executeSymbolCommand(connector, symbol);
+				XTB api = new XTB(connector, symbol);
 
-				populateBaseBarSeries(connector, sr);
+				populateBaseBarSeries(api);
 
 				int endIndex = baseBarSeries.getEndIndex();
 				updateTradingRecord(endIndex, symbol, longTradingRecordsMap.get(symbol));
@@ -134,18 +135,21 @@ public class App {
 
 
 				//skip symbol, too wide spread or updated trade record
-				if((updatedTradeRecord || !isSpreadAcceptable(sr)) && !Configuration.runTest) {
+				if((updatedTradeRecord || !isSpreadAcceptable(api.getSr())) && !Configuration.runTest) {
 					continue;
 				}
 
-				Robot robot = new Robot(baseBarSeries, baseBarSeriesHelper, longTradingRecordsMap.get(symbol),
-						shortTradingRecordsMap.get(symbol), winningRatioMap, blackList.get(symbol), openedPositionsList, sr, connector);
+				Robot robot = new Robot(api, baseBarSeries, baseBarSeriesHelper, longTradingRecordsMap.get(symbol),
+						shortTradingRecordsMap.get(symbol), winningRatioMap, blackList.get(symbol), openedPositionsList);
 				tradeCompleted = robot.runRobotIteration();
 
 				if(tradeCompleted) {
 					break;
 				}
+
+
 			}
+
 			if(robotIteration != 0)
 				updateBlackList(connector);
 
@@ -163,7 +167,7 @@ public class App {
 		} catch (Exception e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
-			System.out.println(new Date() +": Other Exception:" + e.getMessage());
+			System.out.println(new Date() +": Other Exception:" + e.getStackTrace());
 			return;
 		}
 
@@ -181,6 +185,7 @@ public class App {
 		if(!tradingRecord.getCurrentTrade().isNew() && !openedPositionsList.stream().map(e -> e.getSymbol()).anyMatch(e -> e.equals(symbol))) {
 			System.out.println(new Date() + ": Trade record was outdated for symbol "+symbol+". Updating the trading record");
 			boolean exited = tradingRecord.exit(endIndex);
+
 			if(!exited) {
 				System.out.println(new Date() + ": Exit not successful");
 			}
@@ -222,9 +227,8 @@ public class App {
 		}
 	}
 
-	private static BaseBarSeries convertRateInfoToBarSeries(List<RateInfoRecord> rateInfoRecords, SymbolResponse symbolResponse) {
+	private static BaseBarSeries convertRateInfoToBarSeries(List<RateInfoRecord> rateInfoRecords, String symbol, int precisionNumber) {
 		List<Bar> barList = new ArrayList<>();
-		int precisionNumber = symbolResponse.getSymbol().getPrecision();
 		for (RateInfoRecord rateInfoRecord : rateInfoRecords) {
 			ZonedDateTime endTime = ZonedDateTime.ofInstant(Instant.ofEpochMilli(rateInfoRecord.getCtm()),
 					ZoneId.systemDefault());
@@ -245,31 +249,19 @@ public class App {
 					rateInfoRecord.getVol());
 			barList.add(Bar);
 		}
-		return new BaseBarSeries(symbolResponse.getSymbol().getSymbol(), barList);
+		return new BaseBarSeries(symbol, barList);
 	}
 
-	private static void populateBaseBarSeries(SyncAPIConnector connector, SymbolResponse symbolResponse) throws APICommandConstructionException,
-			APICommunicationException, APIReplyParseException, APIErrorResponse, ParseException, InterruptedException {
-		ChartResponse cr = null;
-		ChartResponse helperCr = null;
-		SimpleDateFormat sdf = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss");
-		Date date = Configuration.sinceDateDt;//sdf.parse(Configuration.sinceDate);
+	private static void populateBaseBarSeries(XTB api) throws XTBCommunicationException {
 
-		long millis = date.getTime();
+		List<RateInfoRecord> rateInfos = api.getCharts(Configuration.sinceDateDt, Configuration.candlePeriod);
+		List<RateInfoRecord> helperRateInfos = api.getCharts(Configuration.sinceDateDt, Configuration.helperCandlePeriod);
 
-		String symbol = symbolResponse.getSymbol().getSymbol();
-
-		cr = APICommandFactory.executeChartLastCommand(connector, symbol, Configuration.candlePeriod, millis);
-		Thread.sleep(250);
-		helperCr =  APICommandFactory.executeChartLastCommand(connector, symbol, Configuration.helperCandlePeriod, millis);
-		Thread.sleep(250);
-
-		List<RateInfoRecord> rateInfos = cr.getRateInfos();
-		List<RateInfoRecord> helperRateInfos = helperCr.getRateInfos();
-
+		int precisionNumber = api.getSr().getSymbol().getPrecision();
+		String symbol = api.getSr().getSymbol().getSymbol();
 		// rateInfos.size()-1 - get last full candle. New one is still changing
-		baseBarSeries = convertRateInfoToBarSeries(rateInfos.subList(0, rateInfos.size() - 1), symbolResponse);
-		baseBarSeriesHelper =  convertRateInfoToBarSeries(helperRateInfos.subList(0, helperRateInfos.size() - 1), symbolResponse);
+		baseBarSeries = convertRateInfoToBarSeries(rateInfos.subList(0, rateInfos.size() - 1), symbol, precisionNumber);
+		baseBarSeriesHelper =  convertRateInfoToBarSeries(helperRateInfos.subList(0, helperRateInfos.size() - 1), symbol, precisionNumber);
 
 	}
 

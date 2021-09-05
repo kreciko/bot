@@ -6,14 +6,16 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 
-import org.ta4j.core.BaseBarSeries;
-import org.ta4j.core.Indicator;
-import org.ta4j.core.Strategy;
-import org.ta4j.core.TradingRecord;
+import org.ta4j.core.*;
 import org.ta4j.core.Order.OrderType;
+import org.ta4j.core.indicators.donchian.DonchianChannelLowerIndicator;
+import org.ta4j.core.indicators.donchian.DonchianChannelUpperIndicator;
 import org.ta4j.core.indicators.helpers.StopLossATRSmartIndicator;
+import org.ta4j.core.indicators.helpers.StopLossIndicator;
+import org.ta4j.core.indicators.helpers.StopLossSmartIndicator;
 import org.ta4j.core.num.Num;
 
+import pl.kordek.forex.bot.api.XTB;
 import pl.kordek.forex.bot.constants.Configuration;
 import pl.kordek.forex.bot.exceptions.XTBCommunicationException;
 import pro.xstore.api.message.codes.TRADE_OPERATION_CODE;
@@ -21,66 +23,71 @@ import pro.xstore.api.message.command.APICommandFactory;
 import pro.xstore.api.message.error.APICommandConstructionException;
 import pro.xstore.api.message.error.APICommunicationException;
 import pro.xstore.api.message.error.APIReplyParseException;
+import pro.xstore.api.message.records.SymbolRecord;
 import pro.xstore.api.message.response.APIErrorResponse;
 import pro.xstore.api.message.response.MarginLevelResponse;
 import pro.xstore.api.message.response.MarginTradeResponse;
-import pro.xstore.api.message.response.SymbolResponse;
-import pro.xstore.api.sync.SyncAPIConnector;
 
 public class RobotUtilities {
+	private XTB api;
+	private SymbolRecord symbolRecord;
 
-	private SymbolResponse symbolResponse;
-	private SyncAPIConnector connector;
 
-
-	public RobotUtilities(SymbolResponse symbolResponse, SyncAPIConnector connector) {
-		this.symbolResponse = symbolResponse;
-		this.connector = connector;
+	public RobotUtilities(XTB api) {
+		this.api = api;
+		this.symbolRecord = api.getSr().getSymbol();
 	}
 
 	//------------------- SL AND TP CALCULATION ---------------
-	BigDecimal calculateStopLoss(TRADE_OPERATION_CODE operationCode, BaseBarSeries series){
-		OrderType orderType = operationCode == TRADE_OPERATION_CODE.BUY ? OrderType.BUY : OrderType.SELL;
+	public BigDecimal calculateStopLoss(OrderType orderType, BaseBarSeries series, String strategyWithEntrySignal){
+		BigDecimal spread = BigDecimal.valueOf(symbolRecord.getSpreadRaw());
 
-		BigDecimal spread = BigDecimal.valueOf(symbolResponse.getSymbol().getSpreadRaw());
+		Indicator<Num> donchianInd = orderType == OrderType.BUY ?
+				new DonchianChannelLowerIndicator(series, 20) :
+				new DonchianChannelUpperIndicator(series, 20);
 
-		Indicator<Num> stopLossInd = new StopLossATRSmartIndicator(series, orderType, Configuration.stopLossBarCount, false);
+		// stop loss with donchian channel + atr had better profit results than smart stop loss
+		Indicator<Num> stopLossInd =
+				 //new StopLossSmartIndicator(series, orderType, Configuration.stopLossBarCount, false)
+				 new StopLossIndicator(donchianInd, series, orderType);
+				;
 
-        int precisionNumber = symbolResponse.getSymbol().getPrecision();
+        int precisionNumber = symbolRecord.getPrecision();
 
         BigDecimal stopLoss = BigDecimal.valueOf(stopLossInd.getValue(series.getEndIndex()).doubleValue()).setScale(precisionNumber, RoundingMode.HALF_UP);
-        if(stopLoss.doubleValue() != 0 && operationCode == TRADE_OPERATION_CODE.SELL) {
+        if(stopLoss.doubleValue() != 0 && orderType == OrderType.SELL) {
         	stopLoss = stopLoss.add(spread);
         }
 
         return stopLoss;
     }
 
-	BigDecimal calculateTakeProfit(TRADE_OPERATION_CODE operationCode, BigDecimal stopLoss){
-		OrderType orderType = operationCode == TRADE_OPERATION_CODE.BUY ? OrderType.BUY : OrderType.SELL;
+
+	public BigDecimal calculateTakeProfit(OrderType orderType, BigDecimal stopLoss){
 		BigDecimal takeProfitVsStopLossCoeffBD = BigDecimal.valueOf(Configuration.takeProfitVsStopLossCoeff);
-		Integer precisionNumber = symbolResponse.getSymbol().getPrecision();
-		BigDecimal spread = BigDecimal.valueOf(symbolResponse.getSymbol().getSpreadRaw());
+
+		Integer precisionNumber = symbolRecord.getPrecision();
+		BigDecimal spread = BigDecimal.valueOf(symbolRecord.getSpreadRaw());
 
 		//we add the spread for SELL because the imported prices are bid
-		BigDecimal sellTP = BigDecimal.valueOf(symbolResponse.getSymbol().getBid())
-				.subtract(stopLoss.subtract(BigDecimal.valueOf(symbolResponse.getSymbol().getBid())).multiply(takeProfitVsStopLossCoeffBD))
+		BigDecimal sellTP = BigDecimal.valueOf(symbolRecord.getBid())
+				.subtract(stopLoss.subtract(BigDecimal.valueOf(symbolRecord.getBid())).multiply(takeProfitVsStopLossCoeffBD))
 				.setScale(precisionNumber, RoundingMode.HALF_UP).add(spread);
-        BigDecimal buyTP = BigDecimal.valueOf(symbolResponse.getSymbol().getAsk())
-        		.add(BigDecimal.valueOf(symbolResponse.getSymbol().getAsk()).subtract(stopLoss).multiply(takeProfitVsStopLossCoeffBD))
+        BigDecimal buyTP = BigDecimal.valueOf(symbolRecord.getAsk())
+        		.add(BigDecimal.valueOf(symbolRecord.getAsk()).subtract(stopLoss).multiply(takeProfitVsStopLossCoeffBD))
         		.setScale(precisionNumber, RoundingMode.HALF_UP);
 		return orderType == OrderType.BUY ? buyTP : sellTP;
     }
 
-	boolean shouldUpdateStopLoss(BigDecimal stopLossPrice, BigDecimal takeProfitPrice, TRADE_OPERATION_CODE operationCode) {
-		BigDecimal stopLossMinusBid = stopLossPrice.subtract(BigDecimal.valueOf(symbolResponse.getSymbol().getBid())).abs();
-		BigDecimal takeProfitMinusBid = takeProfitPrice.subtract(BigDecimal.valueOf(symbolResponse.getSymbol().getBid())).abs();
+	public boolean shouldUpdateStopLoss(BigDecimal stopLossPrice, BigDecimal takeProfitPrice, OrderType orderType) {
+		BigDecimal stopLossMinusBid = stopLossPrice.subtract(BigDecimal.valueOf(symbolRecord.getBid())).abs();
+		BigDecimal takeProfitMinusBid = takeProfitPrice.subtract(BigDecimal.valueOf(symbolRecord.getBid())).abs();
 
-		BigDecimal stopLossMinusAsk = stopLossPrice.subtract(BigDecimal.valueOf(symbolResponse.getSymbol().getAsk())).abs();
-		BigDecimal takeProfitMinusAsk = takeProfitPrice.subtract(BigDecimal.valueOf(symbolResponse.getSymbol().getAsk())).abs();
+		BigDecimal stopLossMinusAsk = stopLossPrice.subtract(BigDecimal.valueOf(symbolRecord.getAsk())).abs();
+		BigDecimal takeProfitMinusAsk = takeProfitPrice.subtract(BigDecimal.valueOf(symbolRecord.getAsk())).abs();
 
 
-		if(operationCode == TRADE_OPERATION_CODE.SELL) {
+		if(orderType == OrderType.SELL) {
 			return enoughProfitForSLChange(stopLossMinusAsk, takeProfitMinusAsk);
 		}
 		else {
@@ -99,13 +106,13 @@ public class RobotUtilities {
 
 
 	//------------------- MARGIN, VOLUME AND SL CHECKS ---------------
-	boolean volumeAndSlChecks(double volume, double stopLoss) throws XTBCommunicationException {
+	public boolean volumeAndSlChecks(double volume, double stopLoss) throws XTBCommunicationException {
 		if(stopLoss == 0.0) {
 			System.out.println(new Date() + ": Couldnt calculate the stoploss that would be below the max allowed percentage. Skipping trade");
 			return false;
 		}
 
-		if(!isEnoughMargin(volume)) {
+		if(!api.isEnoughMargin(volume)) {
 			System.out.println(new Date() + ": Not enough margin");
 			return false;
 		}
@@ -118,83 +125,48 @@ public class RobotUtilities {
 		return true;
 	}
 
-	private boolean isEnoughMargin(Double volume) throws XTBCommunicationException {
-		Double marginFree = 0.0;
-		Double marginNeeded = 0.0;
-		try {
-			marginFree = getMarginFree();
-			marginNeeded = getMarginNeeded(volume);
-		} catch (APICommandConstructionException | APIReplyParseException | APICommunicationException
-				| APIErrorResponse e) {
-			throw new XTBCommunicationException("Couldn't execute is enough margin check");
-		}
 
-		return marginFree > marginNeeded;
-	}
-
-	private Double getMarginFree() throws APICommandConstructionException, APIReplyParseException, APICommunicationException, APIErrorResponse {
-		MarginLevelResponse marginLevelResponse;
-        marginLevelResponse = APICommandFactory.executeMarginLevelCommand(connector);
-        return marginLevelResponse.getMargin_free();
-	}
-
-	private Double getMarginNeeded(Double volume) throws APICommandConstructionException, APIReplyParseException, APICommunicationException, APIErrorResponse {
-		MarginTradeResponse marginTradeResponse;
-		marginTradeResponse = APICommandFactory.executeMarginTradeCommand(connector, symbolResponse.getSymbol().getSymbol(), volume);
-        return marginTradeResponse.getMargin();
-	}
-
-
-	//------------------- OPTIMAL VOLUME CALCULATION ---------------
-	double getOptimalVolume(String symbol) throws XTBCommunicationException {
-		MarginLevelResponse marginLevelResponse;
-		BigDecimal optimalVolume = BigDecimal.valueOf(1);
-        try {
-			marginLevelResponse = APICommandFactory.executeMarginLevelCommand(connector);
-			BigDecimal balance = BigDecimal.valueOf(marginLevelResponse.getBalance());
-			BigDecimal balancePerTrade = balance.divide(BigDecimal.valueOf(5L), 2, RoundingMode.HALF_UP);
-
-			MarginTradeResponse marginTradeResponse = APICommandFactory.executeMarginTradeCommand(connector, symbol, optimalVolume.doubleValue());
-			BigDecimal marginRatio = balancePerTrade.divide(BigDecimal.valueOf(marginTradeResponse.getMargin()) , 2, RoundingMode.HALF_UP);
-
-			optimalVolume = optimalVolume.multiply(marginRatio).setScale(2, RoundingMode.HALF_UP);
-			Thread.sleep(250);
-
-			if(optimalVolume.doubleValue() < 0.01) {
-	    		return 0.0;
-	    	}
-			return optimalVolume.doubleValue();
-		} catch (APICommandConstructionException | APIReplyParseException | APICommunicationException
-				| APIErrorResponse | InterruptedException e) {
-			throw new XTBCommunicationException("Couldn't get optimal volume");
-		}
-	}
-
-
-
-	Boolean checkShouldEnter(int endIndex, TradingRecord tradingRecord, List<Strategy> baseStrategies,
-			HashMap<String, HashMap<String, BigDecimal>> winningRatioMap, String symbol) {
+	public String getStrategyWithEntrySignal(int endIndex, TradingRecord tradingRecord, List<Strategy> baseStrategies,
+									  HashMap<String, HashMap<String, BigDecimal>> winningRatioMap, String symbol) {
 		for(Strategy strategy : baseStrategies) {
 			if(strategy.shouldEnter(endIndex, tradingRecord)
 					&& winningRatioMap.get(strategy.getName()).get(symbol).compareTo(BigDecimal.valueOf(Configuration.minWinningRate)) > 0)
 			{
-				System.out.println(new Date() + ": "+strategy.getName()+" strategy signal for a symbol with winning ratio: "+winningRatioMap.get(strategy.getName()).get(symbol));
-				return true;
+				System.out.println(new Date() + ": "+strategy.getName()+" strategy signal for a symbol with winning ratio: "+winningRatioMap.get(strategy.getName()).get(symbol) +" - "+symbol);
+				return strategy.getName();
 			}
 		}
-		return false;
+		return "";
 	}
 
-	Boolean checkShouldExit(int endIndex, TradingRecord tradingRecord, List<Strategy> baseStrategies) {
+	public String getStrategyWithExitSignal(int endIndex, TradingRecord tradingRecord, List<Strategy> baseStrategies) {
 		for(Strategy strategy : baseStrategies) {
 			if(strategy.shouldExit(endIndex, tradingRecord))
 			{
 				System.out.println(new Date() + ": "+strategy.getName()+" strategy exit signal. Current profit ratio of this strategy:");
-				return true;
+				return strategy.getName();
 			}
 		}
-		return false;
+		return "";
 	}
+
+	public Double getOptimalVolume(String symbol,Double strategyStrength){
+		Double volume;
+		try {
+			volume = api.getOptimalVolumeXTB(symbol);
+		}
+		catch(Exception e){
+			System.out.println(new Date() +": XTB Exception:" + e.getMessage() + " . Setting the vol to 0.05");
+			volume = 0.05;
+		}
+		multiplyVolByStrategyStrength(volume, strategyStrength);
+		return volume
+	}
+
+	private void multiplyVolByStrategyStrength(Double volume,Double strategyStrength) {
+		volume = BigDecimal.valueOf(volume).multiply(BigDecimal.valueOf(strategyStrength)).setScale(2, RoundingMode.HALF_DOWN).doubleValue();
+	}
+
 
 
 }

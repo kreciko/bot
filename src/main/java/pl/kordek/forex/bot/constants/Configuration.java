@@ -34,7 +34,7 @@ public interface Configuration {
 	String[] instrumentsFX = majorFX;
 
     PERIOD_CODE candlePeriod = PERIOD_CODE.PERIOD_M15;
-    PERIOD_CODE helperCandlePeriod = PERIOD_CODE.PERIOD_M30;
+    PERIOD_CODE helperCandlePeriod = PERIOD_CODE.PERIOD_H1;
     Integer chartPeriodInHours = 24;
     Double volume = 0.1;
 
@@ -46,7 +46,7 @@ public interface Configuration {
 
     Double stopLossMaxPrcFX = 0.2;
     Double stopLossMaxPrcOthers = 0.5;
-    Boolean stopLossSetToLastCandle = true;
+    Boolean stopLossSetToLastCandle = false;
 
     Boolean updateStopLoss = true;
 
@@ -56,8 +56,8 @@ public interface Configuration {
 
     //test vars
     Boolean runTest = false;
-    String runTestFX = "USDJPY";
-    int testedIndex = 0;
+    String runTestFX = "GBPUSD";
+    int testedIndex = 46;
 
     Boolean runBot = true;
 
