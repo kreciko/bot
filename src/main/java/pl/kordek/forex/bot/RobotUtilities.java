@@ -160,7 +160,7 @@ public class RobotUtilities {
 			volume = 0.05;
 		}
 		multiplyVolByStrategyStrength(volume, strategyStrength);
-		return volume
+		return volume;
 	}
 
 	private void multiplyVolByStrategyStrength(Double volume,Double strategyStrength) {

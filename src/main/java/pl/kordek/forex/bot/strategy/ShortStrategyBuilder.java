@@ -15,11 +15,12 @@ import pl.kordek.forex.bot.rules.IchimokuRules;
 public class ShortStrategyBuilder extends StrategyBuilder {
     private Rule stopLossNotExceedingBounds;
     private Rule longSignalsDontPrevail;
-    public final OrderType orderType = OrderType.SELL;
-    public final int TYPE_OF_OPERATION = 1;
 
     public ShortStrategyBuilder(BaseBarSeries series, BaseBarSeries parentSeries, Indicator stopLossStrategy) {
         super(series,parentSeries);
+
+        this.orderType = OrderType.SELL;
+        this.typeOfOperation = 0;
 
         this.stopLossNotExceedingBounds = new IsEqualRule(
                 new StopLossIndicator(stopLossStrategy, series, Order.OrderType.SELL, 5, 2), DoubleNum.valueOf(0)).negation();

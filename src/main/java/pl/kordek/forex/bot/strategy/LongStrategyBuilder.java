@@ -16,15 +16,13 @@ public class LongStrategyBuilder extends StrategyBuilder {
 
     private Rule stopLossNotExceedingBounds;
     private Rule shortSignalsDontPrevail;
-//    public final OrderType orderType = OrderType.BUY;
-//    public final int TYPE_OF_OPERATION = 0;
 
 
     public LongStrategyBuilder(BaseBarSeries series, BaseBarSeries parentSeries, Indicator stopLossStrategy) {
         super(series,parentSeries);
 
         this.orderType = OrderType.BUY;
-        this.TYPE_OF_OPERATION = 0;
+        this.typeOfOperation = 0;
 
         this.stopLossNotExceedingBounds = new IsEqualRule(
                 new StopLossIndicator(stopLossStrategy, series, Order.OrderType.BUY, 5, 2), DoubleNum.valueOf(0)).negation();
@@ -85,12 +83,10 @@ public class LongStrategyBuilder extends StrategyBuilder {
 
 
     public double assessStrategyStrength() {
-
         Rule strategyStrong = priceActionRules.getLongSignalsPrevailRule(2);
         Rule strategyWeak = priceActionRules.getShortSignalsPrevailRule(2);
 
         return assessStrategyStrength(strategyStrong, strategyWeak);
-
     }
 
 
