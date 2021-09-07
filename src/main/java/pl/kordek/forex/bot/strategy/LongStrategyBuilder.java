@@ -6,6 +6,7 @@ import org.ta4j.core.indicators.helpers.SatisfiedCountIndicator;
 import org.ta4j.core.indicators.helpers.StopLossIndicator;
 import org.ta4j.core.num.DoubleNum;
 import org.ta4j.core.trading.rules.*;
+import pl.kordek.forex.bot.constants.Configuration;
 import pl.kordek.forex.bot.indicator.DonchianIndicators;
 import pl.kordek.forex.bot.indicator.GeneralIndicators;
 import pl.kordek.forex.bot.indicator.IchimokuIndicators;
@@ -25,7 +26,7 @@ public class LongStrategyBuilder extends StrategyBuilder {
         this.typeOfOperation = 0;
 
         this.stopLossNotExceedingBounds = new IsEqualRule(
-                new StopLossIndicator(stopLossStrategy, series, Order.OrderType.BUY, 5, 2), DoubleNum.valueOf(0)).negation();
+                new StopLossIndicator(stopLossStrategy, series, Order.OrderType.BUY, Configuration.stopLossMaxATR, Configuration.stopLossMinATR), DoubleNum.valueOf(0)).negation();
         this.shortSignalsDontPrevail = priceActionRules.getShortSignalsPrevailRule(1).negation();
     }
 

@@ -1,48 +1,50 @@
 package pl.kordek.forex.bot.checker;
 
 import org.ta4j.core.BaseBarSeries;
+import org.ta4j.core.BaseTradingRecord;
+import org.ta4j.core.Order;
+import org.ta4j.core.Order.OrderType;
 import org.ta4j.core.TradingRecord;
 import org.ta4j.core.num.DoubleNum;
-import pl.kordek.forex.bot.api.XTB;
+import pl.kordek.forex.bot.api.XTBSymbolOperations;
 import pl.kordek.forex.bot.domain.TradeInfo;
 import pl.kordek.forex.bot.exceptions.XTBCommunicationException;
 import pl.kordek.forex.bot.strategy.StrategyBuilder;
 import pro.xstore.api.message.records.TradeRecord;
 
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
 public class PositionChecker {
-    private StrategyBuilder strategyBuilder;
     private List<TradeRecord> openedPositions = null;
 
 
-    public PositionChecker(StrategyBuilder strategyBuilder,
-                           List<TradeRecord> openedPositions) {
-        this.strategyBuilder = strategyBuilder;
+    public PositionChecker(List<TradeRecord> openedPositions) {
         this.openedPositions = openedPositions;
     }
-
-    public double getStrategyStrength(){
-        return strategyBuilder.assessStrategyStrength();
+    public PositionChecker() {
+        this.openedPositions = new ArrayList<>();
     }
 
-    public boolean isPositionOpenedAndOperationValid(String symbol){
+    public boolean isPositionOpenedAndOperationValid(String symbol, OrderType orderType){
+        int typeOfOperation = orderType == orderType.BUY ? 0 : 1;
         boolean positionOpened =  openedPositions.stream()
                 .anyMatch(e -> e.getSymbol().equals(symbol));
         boolean operationValid = openedPositions.stream()
-                .anyMatch(e -> e.getSymbol().equals(symbol) && e.getCmd() == strategyBuilder.typeOfOperation);
+                .anyMatch(e -> e.getSymbol().equals(symbol) && e.getCmd() == typeOfOperation);
         return positionOpened && operationValid;
     }
 
-    public TradeRecord getSymbolTradeRecord(String symbol){
+    public TradeRecord getOpenedPosition(String symbol){
         return openedPositions.stream()
                 .filter(e-> e.getSymbol().equals(symbol))
                 .findAny()
                 .orElse(null);
     }
 
-    public boolean enterPosition(XTB api, TradingRecord tradingRecord, TradeInfo tradeInfo) throws XTBCommunicationException {
+
+    public boolean enterPosition(XTBSymbolOperations api, TradingRecord tradingRecord, TradeInfo tradeInfo) throws XTBCommunicationException {
         if(tradeInfo == null)
             return false;
 
@@ -62,18 +64,19 @@ public class PositionChecker {
         return false;
     }
 
-    public boolean exitPosition(XTB api, TradingRecord tradingRecord, TradeRecord xtbTradeRecord) throws XTBCommunicationException {
+    public boolean exitPosition(XTBSymbolOperations api, BaseBarSeries series, TradingRecord tradingRecord,
+                                TradeRecord xtbTradeRecord) throws XTBCommunicationException {
         double dummyVolume = 0.05;
-        BaseBarSeries series = strategyBuilder.getSeries();
+        OrderType orderType = tradingRecord.getStartingType();
 
         boolean exited = tradingRecord.exit(series.getEndIndex(), series.getLastBar().getClosePrice(),
                 DoubleNum.valueOf(dummyVolume));
         if (exited) {
-            api.exitXTB(xtbTradeRecord, strategyBuilder.orderType);
+            api.exitXTB(xtbTradeRecord, orderType);
             System.out.println(new Date() + ": Closed in XTB successfully");
             return true;
         } else {
-            System.out.println(new Date() + ": Didn't exit "+ strategyBuilder.orderType+" position for: " + series.getName());
+            System.out.println(new Date() + ": Didn't exit "+ orderType+" position for: " + xtbTradeRecord.getSymbol());
         }
 
         return false;

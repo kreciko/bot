@@ -1,4 +1,19 @@
-package pl.kordek.forex.bot;
+package pl.kordek.forex.bot.utils;
+
+import org.ta4j.core.BaseBarSeries;
+import org.ta4j.core.Indicator;
+import org.ta4j.core.Order.OrderType;
+import org.ta4j.core.Strategy;
+import org.ta4j.core.TradingRecord;
+import org.ta4j.core.indicators.donchian.DonchianChannelLowerIndicator;
+import org.ta4j.core.indicators.donchian.DonchianChannelUpperIndicator;
+import org.ta4j.core.indicators.helpers.StopLossIndicator;
+import org.ta4j.core.num.Num;
+import pl.kordek.forex.bot.api.XTBSymbolOperations;
+import pl.kordek.forex.bot.constants.Configuration;
+import pl.kordek.forex.bot.exceptions.XTBCommunicationException;
+import pro.xstore.api.message.records.SymbolRecord;
+import pro.xstore.api.message.records.TradeRecord;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -6,34 +21,15 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 
-import org.ta4j.core.*;
-import org.ta4j.core.Order.OrderType;
-import org.ta4j.core.indicators.donchian.DonchianChannelLowerIndicator;
-import org.ta4j.core.indicators.donchian.DonchianChannelUpperIndicator;
-import org.ta4j.core.indicators.helpers.StopLossATRSmartIndicator;
-import org.ta4j.core.indicators.helpers.StopLossIndicator;
-import org.ta4j.core.indicators.helpers.StopLossSmartIndicator;
-import org.ta4j.core.num.Num;
+public class VolumeAndSLOperations {
+	private final int TYPE_OF_OPERATION_BUY = 0;
+	private final int TYPE_OF_OPERATION_SELL = 1;
 
-import pl.kordek.forex.bot.api.XTB;
-import pl.kordek.forex.bot.constants.Configuration;
-import pl.kordek.forex.bot.exceptions.XTBCommunicationException;
-import pro.xstore.api.message.codes.TRADE_OPERATION_CODE;
-import pro.xstore.api.message.command.APICommandFactory;
-import pro.xstore.api.message.error.APICommandConstructionException;
-import pro.xstore.api.message.error.APICommunicationException;
-import pro.xstore.api.message.error.APIReplyParseException;
-import pro.xstore.api.message.records.SymbolRecord;
-import pro.xstore.api.message.response.APIErrorResponse;
-import pro.xstore.api.message.response.MarginLevelResponse;
-import pro.xstore.api.message.response.MarginTradeResponse;
-
-public class RobotUtilities {
-	private XTB api;
+	private XTBSymbolOperations api;
 	private SymbolRecord symbolRecord;
 
 
-	public RobotUtilities(XTB api) {
+	public VolumeAndSLOperations(XTBSymbolOperations api) {
 		this.api = api;
 		this.symbolRecord = api.getSr().getSymbol();
 	}
@@ -50,7 +46,6 @@ public class RobotUtilities {
 		Indicator<Num> stopLossInd =
 				 //new StopLossSmartIndicator(series, orderType, Configuration.stopLossBarCount, false)
 				 new StopLossIndicator(donchianInd, series, orderType);
-				;
 
         int precisionNumber = symbolRecord.getPrecision();
 
@@ -79,7 +74,31 @@ public class RobotUtilities {
 		return orderType == OrderType.BUY ? buyTP : sellTP;
     }
 
-	public boolean shouldUpdateStopLoss(BigDecimal stopLossPrice, BigDecimal takeProfitPrice, OrderType orderType) {
+
+
+	public boolean shouldUpdateStopLoss(TradeRecord xtbTR, OrderType orderType){
+		if(!Configuration.updateStopLoss) {
+			return false;
+		}
+		if (xtbTR == null || isTrOperationInvalid(orderType, xtbTR.getCmd()))
+			return false;
+
+		if(!shouldUpdateStopLoss(
+				BigDecimal.valueOf(xtbTR.getSl()),
+				BigDecimal.valueOf(xtbTR.getTp()),
+				orderType)){
+			return false;
+		}
+
+		return true;
+	}
+
+	private boolean isTrOperationInvalid(OrderType orderType, int existingOperationCode){
+		return (existingOperationCode == TYPE_OF_OPERATION_SELL && orderType  == OrderType.BUY)
+				|| (existingOperationCode == TYPE_OF_OPERATION_BUY && orderType == OrderType.SELL);
+	}
+
+	private boolean shouldUpdateStopLoss(BigDecimal stopLossPrice, BigDecimal takeProfitPrice, OrderType orderType) {
 		BigDecimal stopLossMinusBid = stopLossPrice.subtract(BigDecimal.valueOf(symbolRecord.getBid())).abs();
 		BigDecimal takeProfitMinusBid = takeProfitPrice.subtract(BigDecimal.valueOf(symbolRecord.getBid())).abs();
 
@@ -125,35 +144,10 @@ public class RobotUtilities {
 		return true;
 	}
 
-
-	public String getStrategyWithEntrySignal(int endIndex, TradingRecord tradingRecord, List<Strategy> baseStrategies,
-									  HashMap<String, HashMap<String, BigDecimal>> winningRatioMap, String symbol) {
-		for(Strategy strategy : baseStrategies) {
-			if(strategy.shouldEnter(endIndex, tradingRecord)
-					&& winningRatioMap.get(strategy.getName()).get(symbol).compareTo(BigDecimal.valueOf(Configuration.minWinningRate)) > 0)
-			{
-				System.out.println(new Date() + ": "+strategy.getName()+" strategy signal for a symbol with winning ratio: "+winningRatioMap.get(strategy.getName()).get(symbol) +" - "+symbol);
-				return strategy.getName();
-			}
-		}
-		return "";
-	}
-
-	public String getStrategyWithExitSignal(int endIndex, TradingRecord tradingRecord, List<Strategy> baseStrategies) {
-		for(Strategy strategy : baseStrategies) {
-			if(strategy.shouldExit(endIndex, tradingRecord))
-			{
-				System.out.println(new Date() + ": "+strategy.getName()+" strategy exit signal. Current profit ratio of this strategy:");
-				return strategy.getName();
-			}
-		}
-		return "";
-	}
-
 	public Double getOptimalVolume(String symbol,Double strategyStrength){
 		Double volume;
 		try {
-			volume = api.getOptimalVolumeXTB(symbol);
+			volume = api.getOptimalVolumeXTB();
 		}
 		catch(Exception e){
 			System.out.println(new Date() +": XTB Exception:" + e.getMessage() + " . Setting the vol to 0.05");

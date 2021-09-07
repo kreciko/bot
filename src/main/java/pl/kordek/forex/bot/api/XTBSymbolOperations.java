@@ -1,8 +1,6 @@
 package pl.kordek.forex.bot.api;
 
-import org.ta4j.core.Order;
 import org.ta4j.core.Order.OrderType;
-import pl.kordek.forex.bot.constants.Configuration;
 import pl.kordek.forex.bot.exceptions.XTBCommunicationException;
 import pro.xstore.api.message.codes.PERIOD_CODE;
 import pro.xstore.api.message.codes.TRADE_OPERATION_CODE;
@@ -24,17 +22,12 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 
-public class XTB {
-    private SyncAPIConnector connector = null;
+public class XTBSymbolOperations extends XTBOperations{
     private SymbolResponse sr;
-    private HashMap<OrderType, TRADE_OPERATION_CODE> orderTypeXTBMap;
 
-    public XTB(SyncAPIConnector connector, String symbol) throws APIErrorResponse, APIReplyParseException, APICommunicationException, APICommandConstructionException {
-        this.connector = connector;
+    public XTBSymbolOperations(SyncAPIConnector connector, String symbol) throws APIErrorResponse, APIReplyParseException, APICommunicationException, APICommandConstructionException {
+        super(connector);
         this.sr = APICommandFactory.executeSymbolCommand(connector, symbol);
-        this.orderTypeXTBMap = new HashMap<>();
-        orderTypeXTBMap.put(OrderType.BUY, TRADE_OPERATION_CODE.BUY);
-        orderTypeXTBMap.put(OrderType.SELL, TRADE_OPERATION_CODE.SELL);
     }
 
     public void enterXTB(OrderType orderType, BigDecimal stopLoss, BigDecimal takeProfit,
@@ -53,24 +46,10 @@ public class XTB {
         }
     }
 
-    public void exitXTB(TradeRecord tr, OrderType orderType) throws XTBCommunicationException {
-        if(tr==null)
-            return;
-        TradeTransInfoRecord ttInfoRecord = new TradeTransInfoRecord(orderTypeXTBMap.get(orderType),
-                TRADE_TRANSACTION_TYPE.CLOSE, tr.getClose_price(), tr.getSl(), tr.getTp(), tr.getSymbol(), tr.getVolume(), tr.getOrder(), tr.getComment(), tr.getExpiration());
-        try {
-            APICommandFactory.executeTradeTransactionCommand(connector, ttInfoRecord);
-            Thread.sleep(250);
-        } catch (APICommandConstructionException | APIReplyParseException | APICommunicationException
-                | APIErrorResponse | InterruptedException e1) {
-            System.out.println(new Date() + ": Failed to close in XTB" + tr.getSymbol());
-            throw new XTBCommunicationException("Couldn't close the position in XTB due to communication problems: "+tr.getSymbol());
-        }
 
-    }
 
     //------------------- OPTIMAL VOLUME CALCULATION ---------------
-    public double getOptimalVolumeXTB(String symbol) throws XTBCommunicationException {
+    public double getOptimalVolumeXTB() throws XTBCommunicationException {
         MarginLevelResponse marginLevelResponse;
         BigDecimal optimalVolume = BigDecimal.valueOf(1);
         try {
@@ -78,7 +57,7 @@ public class XTB {
             BigDecimal balance = BigDecimal.valueOf(marginLevelResponse.getBalance());
             BigDecimal balancePerTrade = balance.divide(BigDecimal.valueOf(5L), 2, RoundingMode.HALF_UP);
 
-            MarginTradeResponse marginTradeResponse = APICommandFactory.executeMarginTradeCommand(connector, symbol, optimalVolume.doubleValue());
+            MarginTradeResponse marginTradeResponse = APICommandFactory.executeMarginTradeCommand(connector, sr.getSymbol().getSymbol(), optimalVolume.doubleValue());
             BigDecimal marginRatio = balancePerTrade.divide(BigDecimal.valueOf(marginTradeResponse.getMargin()) , 2, RoundingMode.HALF_UP);
 
             optimalVolume = optimalVolume.multiply(marginRatio).setScale(2, RoundingMode.HALF_UP);
@@ -93,26 +72,6 @@ public class XTB {
                 | APIErrorResponse | InterruptedException e) {
             throw new XTBCommunicationException("Couldn't get optimal volume");
         }
-    }
-
-    public void updateStopLossXTB(TradeRecord tr, OrderType orderType) throws XTBCommunicationException {
-        double stopLoss = tr.getOpen_price();
-
-        TradeTransInfoRecord ttInfoRecord = new TradeTransInfoRecord(orderTypeXTBMap.get(orderType),
-                TRADE_TRANSACTION_TYPE.MODIFY, tr.getClose_price(), stopLoss, tr.getTp(), tr.getSymbol(), tr.getVolume(), tr.getOrder(), tr.getComment(), tr.getExpiration());
-        try {
-            APICommandFactory.executeTradeTransactionCommand(connector, ttInfoRecord);
-            Thread.sleep(250);
-        } catch (APICommandConstructionException | APIReplyParseException | APICommunicationException
-                | APIErrorResponse | InterruptedException e1) {
-            throw new XTBCommunicationException("Couldn't update the stopLoss in XTB due to communication problems: "+tr.getSymbol());
-        }
-    }
-
-    private Double getMarginFree() throws APICommandConstructionException, APIReplyParseException, APICommunicationException, APIErrorResponse {
-        MarginLevelResponse marginLevelResponse;
-        marginLevelResponse = APICommandFactory.executeMarginLevelCommand(connector);
-        return marginLevelResponse.getMargin_free();
     }
 
     private Double getMarginNeeded(Double volume) throws XTBCommunicationException {
@@ -152,6 +111,7 @@ public class XTB {
 
         return marginFree > marginNeeded;
     }
+
 
     /// getters
 

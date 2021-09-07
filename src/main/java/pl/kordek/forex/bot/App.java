@@ -1,68 +1,29 @@
 package pl.kordek.forex.bot;
 
-import static java.util.stream.Collectors.toList;
-
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.nio.charset.Charset;
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
 import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Set;
 
-import org.ta4j.core.Bar;
-import org.ta4j.core.BarSeries;
-import org.ta4j.core.BaseBar;
-import org.ta4j.core.BaseBarSeries;
-import org.ta4j.core.BaseTradingRecord;
-import org.ta4j.core.Order.OrderType;
-import org.ta4j.core.TradingRecord;
-import org.ta4j.core.analysis.criteria.AverageProfitableTradesCriterion;
+import org.ta4j.core.*;
 import org.ta4j.core.indicators.ATRIndicator;
 
-import com.opencsv.CSVReader;
-
-import org.ta4j.core.num.Num;
-import pl.kordek.forex.bot.api.XTB;
+import pl.kordek.forex.bot.api.XTBOperations;
+import pl.kordek.forex.bot.api.XTBSymbolOperations;
 import pl.kordek.forex.bot.constants.Configuration;
-import pl.kordek.forex.bot.domain.BlackListOperation;
 import pl.kordek.forex.bot.domain.RobotInfo;
 import pl.kordek.forex.bot.exceptions.SerializationFailedException;
 import pl.kordek.forex.bot.exceptions.XTBCommunicationException;
+import pl.kordek.forex.bot.utils.FinishOperations;
+import pl.kordek.forex.bot.utils.InitOperations;
+import pl.kordek.forex.bot.utils.IterationOperations;
 import pro.xstore.api.message.codes.PERIOD_CODE;
-import pro.xstore.api.message.command.APICommandFactory;
-import pro.xstore.api.message.error.APICommandConstructionException;
-import pro.xstore.api.message.error.APICommunicationException;
-import pro.xstore.api.message.error.APIReplyParseException;
-import pro.xstore.api.message.records.RateInfoRecord;
 import pro.xstore.api.message.records.TradeRecord;
-import pro.xstore.api.message.response.APIErrorResponse;
-import pro.xstore.api.message.response.ChartResponse;
-import pro.xstore.api.message.response.LoginResponse;
-import pro.xstore.api.message.response.MarginLevelResponse;
-import pro.xstore.api.message.response.MarginTradeResponse;
 import pro.xstore.api.message.response.SymbolResponse;
-import pro.xstore.api.message.response.TradesHistoryResponse;
-import pro.xstore.api.message.response.TradesResponse;
-import pro.xstore.api.sync.Credentials;
 import pro.xstore.api.sync.SyncAPIConnector;
 
 
@@ -71,97 +32,63 @@ import pro.xstore.api.sync.SyncAPIConnector;
  *
  */
 public class App {
-	private static final int LONG_INDEX=0;
-	private static final int SHORT_INDEX=1;
+	private static HashMap<PERIOD_CODE, Duration> durationMap;
+	private static BaseBarSeries series = null;
+	private static BaseBarSeries parentSeries = null;
 
-	private static HashMap<PERIOD_CODE, Duration> durationMap = new HashMap<>();
-	private static BaseBarSeries baseBarSeries = null;
-	private static BaseBarSeries baseBarSeriesHelper = null;
-	private static HashMap<String, TradingRecord> longTradingRecordsMap = null;
-	private static HashMap<String, TradingRecord> shortTradingRecordsMap = null;
-	private static List<TradeRecord> openedPositionsList = new ArrayList<>();
-	private static List<String> spreadTooLargeSymbols = new ArrayList<>();;
-	private static HashMap<String,BlackListOperation> blackList = null;
-	private static int robotIteration = 0;
-
-	private static boolean updatedTradeRecord = false;
-
-	public static boolean tradeCompleted = false;
+	private static List<String> spreadTooLargeSymbols = new ArrayList<>();
 
 	private static HashMap<String, HashMap<String, BigDecimal>> winningRatioMap = null;
 
-	public static void main(String[] args) {
+	private static RobotInfo robotInfo;
 
+	public static void main(String[] args) {
 		if(!Configuration.runBot) {
 			return;
 		}
-
-		SyncAPIConnector connector = null;
-		buildDurationMap();
 		String robotInfoFileLocation = args.length == 0 ? "robot-info.bin" : args[0];
-
 		try {
-			//if we don't run test then wait longer for the data to be updated in the XTB system
-			if(Configuration.runTest) {
-				Thread.sleep(1000);
-			}
-			else
-				Thread.sleep(120000);
+			init(robotInfoFileLocation);
 
-			deserializeFiles(robotInfoFileLocation);
+			SyncAPIConnector connector = new SyncAPIConnector(Configuration.server);
 
-			connector = new SyncAPIConnector(Configuration.server);
-			LoginResponse loginResponse = APICommandFactory.executeLoginCommand(connector,
-					new Credentials(Configuration.username, Configuration.password));
-
-			if (loginResponse != null && !loginResponse.getStatus()) {
-				throw new XTBCommunicationException("Failed to login");
-			}
-
-			initWinningRatios();
-
-			getOpenedPositions(connector);
-
+			XTBOperations baseApi = new XTBOperations(connector);
+			baseApi.loginToXTB();
+			List<TradeRecord> openedPositions = baseApi.getOpenedPositions();
 
 			for (String symbol : Configuration.instrumentsFX) {
-				updatedTradeRecord = false;
-				XTB api = new XTB(connector, symbol);
+				XTBSymbolOperations symbolApi = new XTBSymbolOperations(connector, symbol);
 
-				populateBaseBarSeries(api);
+				IterationOperations iterationOperations = new IterationOperations();
+				series = iterationOperations.populateBaseBarSeries(symbolApi,
+						durationMap.get(Configuration.candlePeriod), Configuration.candlePeriod, Configuration.sinceDateDt);
+				parentSeries = iterationOperations.populateBaseBarSeries(symbolApi,
+						durationMap.get(Configuration.parentCandlePeriod), Configuration.parentCandlePeriod, Configuration.sinceDateDt);
 
-				int endIndex = baseBarSeries.getEndIndex();
-				updateTradingRecord(endIndex, symbol, longTradingRecordsMap.get(symbol));
-				updateTradingRecord(endIndex, symbol, shortTradingRecordsMap.get(symbol));
 
+				int endIndex = series.getEndIndex();
+				boolean exitedLong = exitIfNeeded(endIndex, symbol, robotInfo.getLongTradingRecordMap().get(symbol), openedPositions);
+				boolean exitedShort = exitIfNeeded(endIndex, symbol, robotInfo.getShortTradingRecordMap().get(symbol), openedPositions);
+				boolean exited = exitedLong || exitedShort;
 
 				//skip symbol, too wide spread or updated trade record
-				if((updatedTradeRecord || !isSpreadAcceptable(api.getSr())) && !Configuration.runTest) {
+				if(!checkTradePossible(exited, isSpreadAcceptable(symbolApi.getSr()))) {
 					continue;
 				}
 
-				Robot robot = new Robot(api, baseBarSeries, baseBarSeriesHelper, longTradingRecordsMap.get(symbol),
-						shortTradingRecordsMap.get(symbol), winningRatioMap, blackList.get(symbol), openedPositionsList);
-				tradeCompleted = robot.runRobotIteration();
-
-				if(tradeCompleted) {
+				Robot robot = new Robot(symbolApi, series, parentSeries, robotInfo
+						, winningRatioMap);
+				if(robot.runRobotIteration()) {
 					break;
 				}
-
-
 			}
 
-			if(robotIteration != 0)
-				updateBlackList(connector);
+			FinishOperations finishOperations = new FinishOperations(robotInfo);
+			finishOperations.updateBlackList(connector, durationMap.get(PERIOD_CODE.PERIOD_H1));
 
-			serializeFiles(robotInfoFileLocation);
+			finishOperations.serializeFiles(robotInfoFileLocation);
 
-			getOpenedPositions(connector);
-			System.out.print(new Date() + ": "+robotIteration+" robot iteration. Positions opened: "
-					+ openedPositionsList.stream().map(e -> e.getSymbol()).collect(toList()));
-			System.out.println(" Black list: "+blackList.values().stream().map(e -> e.getInstrument() + " " + e.getTypeOfOperation()).collect(toList()));
-			System.out.println(new Date() + ": Spread too wide for following:"+spreadTooLargeSymbols);
-			System.out.println();
-
+			finishOperations.printIterationInfos(baseApi.getOpenedPositions(), spreadTooLargeSymbols);
 		} catch (XTBCommunicationException xtbEx) {
 			System.out.println(new Date() +": XTB Exception:" + xtbEx.getMessage());
 		} catch (Exception e) {
@@ -173,204 +100,47 @@ public class App {
 
 	}
 
-	private static void updateTradingRecord(int endIndex, String symbol, TradingRecord tradingRecord) {
+	private static void init(String robotInfoFileLocation) throws InterruptedException, SerializationFailedException, IOException {
+		//if we don't run test then wait longer for the data to be updated in the XTB system
+		if(Configuration.runTest) {
+			Thread.sleep(Configuration.testWaitingTime);
+		}
+		else
+			Thread.sleep(Configuration.waitingTime);
+		InitOperations initOperations = new InitOperations();
+
+		robotInfo = initOperations.deserializeFiles(robotInfoFileLocation);
+		winningRatioMap = initOperations.initWinningRatios();
+		durationMap = initOperations.buildDurationMap();
+	}
+
+
+	private static boolean exitIfNeeded(int endIndex, String symbol, TradingRecord tradingRecord,  List<TradeRecord> openedPositionsList) {
 		if(null == tradingRecord) {
 			System.out.println(new Date() +": There shouldn't be null trading records!");
 		}
-		exitIfNeeded(endIndex, symbol, "", tradingRecord);
-	}
 
-	private static void exitIfNeeded(int endIndex, String symbol, String strategy, TradingRecord tradingRecord) {
 		//check if trading record has a trade that is opened (not new), but it's not existing in XTB
-		if(!tradingRecord.getCurrentTrade().isNew() && !openedPositionsList.stream().map(e -> e.getSymbol()).anyMatch(e -> e.equals(symbol))) {
+		if(!tradingRecord.getCurrentTrade().isNew()
+				&& !openedPositionsList.stream().map(e -> e.getSymbol()).anyMatch(e -> e.equals(symbol))) {
 			System.out.println(new Date() + ": Trade record was outdated for symbol "+symbol+". Updating the trading record");
 			boolean exited = tradingRecord.exit(endIndex);
 
 			if(!exited) {
 				System.out.println(new Date() + ": Exit not successful");
 			}
-			updatedTradeRecord = true;
+			return true;
 		}
+		return false;
 	}
 
-	private static void updateBlackList(SyncAPIConnector connector) throws XTBCommunicationException {
-		Duration durationPeriod = durationMap.get(PERIOD_CODE.PERIOD_H1);
-		long durationMilis = durationPeriod.toMillis();
-		long dateStart = new Date().getTime() - durationMilis;
-
-		TradesHistoryResponse tHistoryResponse;
-		try {
-			tHistoryResponse = APICommandFactory.executeTradesHistoryCommand(connector, dateStart, 0L);
-
-			for (TradeRecord t : tHistoryResponse.getTradeRecords()) {
-				if (t.getProfit() < 0 && !blackList.containsKey(t.getSymbol())) {
-					blackList.put(t.getSymbol(), new BlackListOperation(t.getSymbol(), t.getCmd(), t.getClose_time()));
-					System.out.println(new Date() + ": Putting symbol " + t.getSymbol() + " to the black list");
-				}
-			}
-
-			Set<Entry<String, BlackListOperation>> blackListEntrySet = new HashSet<>();
-			blackListEntrySet.addAll(blackList.entrySet());
-			for (Map.Entry<String, BlackListOperation> pair : blackListEntrySet) {
-				BlackListOperation t = pair.getValue();
-				Long timePassed = new Date().getTime() - t.getCloseTime();
-				Duration d = Duration.ofMillis(timePassed);
-				if (d.toHours() > 5L) {
-					blackList.remove(pair.getKey());
-					System.out.println(new Date() + ": Removing symbol " + pair.getKey() + " from the black list");
-				}
-			}
-
-		} catch (APICommandConstructionException | APICommunicationException | APIReplyParseException
-				| APIErrorResponse e1) {
-			throw new XTBCommunicationException("Couldn't get trade history from xtb");
-		}
-	}
-
-	private static BaseBarSeries convertRateInfoToBarSeries(List<RateInfoRecord> rateInfoRecords, String symbol, int precisionNumber) {
-		List<Bar> barList = new ArrayList<>();
-		for (RateInfoRecord rateInfoRecord : rateInfoRecords) {
-			ZonedDateTime endTime = ZonedDateTime.ofInstant(Instant.ofEpochMilli(rateInfoRecord.getCtm()),
-					ZoneId.systemDefault());
-			BigDecimal open = BigDecimal.valueOf(rateInfoRecord.getOpen()).scaleByPowerOfTen(-precisionNumber);
-			BigDecimal high = BigDecimal.valueOf(rateInfoRecord.getOpen())
-					.add(BigDecimal.valueOf(rateInfoRecord.getHigh())).scaleByPowerOfTen(-precisionNumber);
-			BigDecimal low = BigDecimal.valueOf(rateInfoRecord.getOpen())
-					.add(BigDecimal.valueOf(rateInfoRecord.getLow())).scaleByPowerOfTen(-precisionNumber);
-			BigDecimal close = BigDecimal.valueOf(rateInfoRecord.getOpen())
-					.add(BigDecimal.valueOf(rateInfoRecord.getClose())).scaleByPowerOfTen(-precisionNumber);
-
-			Double openD = open.doubleValue();
-			Double highD = high.doubleValue();
-			Double lowD = low.doubleValue();
-			Double closeD = close.doubleValue();
-
-			BaseBar Bar = new BaseBar(durationMap.get(Configuration.candlePeriod), endTime, openD, highD, lowD, closeD,
-					rateInfoRecord.getVol());
-			barList.add(Bar);
-		}
-		return new BaseBarSeries(symbol, barList);
-	}
-
-	private static void populateBaseBarSeries(XTB api) throws XTBCommunicationException {
-
-		List<RateInfoRecord> rateInfos = api.getCharts(Configuration.sinceDateDt, Configuration.candlePeriod);
-		List<RateInfoRecord> helperRateInfos = api.getCharts(Configuration.sinceDateDt, Configuration.helperCandlePeriod);
-
-		int precisionNumber = api.getSr().getSymbol().getPrecision();
-		String symbol = api.getSr().getSymbol().getSymbol();
-		// rateInfos.size()-1 - get last full candle. New one is still changing
-		baseBarSeries = convertRateInfoToBarSeries(rateInfos.subList(0, rateInfos.size() - 1), symbol, precisionNumber);
-		baseBarSeriesHelper =  convertRateInfoToBarSeries(helperRateInfos.subList(0, helperRateInfos.size() - 1), symbol, precisionNumber);
-
-	}
-
-	private static BaseBarSeries convertToHelperBaseBar(PERIOD_CODE period, BaseBarSeries baseBarInfos) {
-		List<Bar> barList = new ArrayList<>();
-		Duration duration = durationMap.get(period);
-		int loopIterations = BigDecimal.valueOf(duration.toMillis()).divide(BigDecimal.valueOf(baseBarInfos.getFirstBar().getTimePeriod().toMillis()), 0, RoundingMode.HALF_UP).intValue();
-
-		int loopIndex = 0;
-		Double highPrice = 0.0;
-		Double lowPrice = Double.MAX_VALUE;
-		Double openPrice = 0.0;
-		Double closePrice = 0.0;
-		Bar currentBar;
-		ZonedDateTime endTime = ZonedDateTime.now();
-		while(loopIndex+loopIterations<baseBarInfos.getEndIndex()) {
-			for(int i=loopIndex; i<loopIndex+loopIterations;i++) {
-				currentBar = baseBarInfos.getBar(i);
-				if(currentBar.getHighPrice().doubleValue() > highPrice) highPrice = currentBar.getHighPrice().doubleValue();
-				if(currentBar.getLowPrice().doubleValue() < lowPrice) lowPrice = currentBar.getLowPrice().doubleValue();
-				if(i==loopIndex) {
-					openPrice = currentBar.getOpenPrice().doubleValue();
-				}
-				if(i==loopIndex+loopIterations-1) {
-					closePrice = currentBar.getClosePrice().doubleValue();
-					endTime = currentBar.getEndTime();
-				}
-			}
-			BaseBar newBar = new BaseBar(durationMap.get(period), endTime, openPrice, highPrice, lowPrice, closePrice, 0.0);
-			barList.add(newBar);
-			loopIndex = loopIndex + loopIterations;
-		}
-
-		return new BaseBarSeries(baseBarInfos.getName(),barList);
-	}
-
-	private static void buildDurationMap() {
-		durationMap.put(PERIOD_CODE.PERIOD_M1, Duration.ofMinutes(1));
-		durationMap.put(PERIOD_CODE.PERIOD_M5, Duration.ofMinutes(5));
-		durationMap.put(PERIOD_CODE.PERIOD_M15, Duration.ofMinutes(15));
-		durationMap.put(PERIOD_CODE.PERIOD_M30, Duration.ofMinutes(30));
-		durationMap.put(PERIOD_CODE.PERIOD_H1, Duration.ofHours(1));
-		durationMap.put(PERIOD_CODE.PERIOD_H4, Duration.ofHours(4));
-		durationMap.put(PERIOD_CODE.PERIOD_D1, Duration.ofDays(1));
-	}
-
-	private static void getOpenedPositions(SyncAPIConnector connector) throws APICommandConstructionException,
-			APIReplyParseException, APICommunicationException, APIErrorResponse {
-		TradesResponse tradeResponse = APICommandFactory.executeTradesCommand(connector, true);
-		openedPositionsList = tradeResponse.getTradeRecords();
-	}
-
-
-
-	private static void serializeFiles(String robotInfoFileLocation) throws SerializationFailedException
-	{
-		List<HashMap<String, TradingRecord>> tradingRecordsMaps = new ArrayList<>();
-		tradingRecordsMaps.add(longTradingRecordsMap);
-		tradingRecordsMaps.add(shortTradingRecordsMap);
-		RobotInfo info = new RobotInfo(tradingRecordsMaps, blackList, robotIteration+1);
-
-		try (ObjectOutputStream outputStream = new ObjectOutputStream(new FileOutputStream(robotInfoFileLocation))) {
-			outputStream.writeObject(info);
-		} catch (IOException e) {
-			throw new SerializationFailedException("Serialization failed");
-		}
-	}
-
-	@SuppressWarnings({ "unchecked", "unused" })
-	private static void deserializeFiles(String robotInfoFileLocation)
-			throws SerializationFailedException {
-
-		try (ObjectInputStream inputStream = new ObjectInputStream(new FileInputStream(robotInfoFileLocation))) {
-
-			RobotInfo info = (RobotInfo) inputStream
-					.readObject();
-			List<HashMap<String, TradingRecord>> tradingRecordsMaps = info.getTradingRecordsMaps();
-			longTradingRecordsMap = tradingRecordsMaps.get(LONG_INDEX);
-			shortTradingRecordsMap = tradingRecordsMaps.get(SHORT_INDEX);
-			robotIteration = info.getRobotIteration();
-			//to avoid to big iteration nr
-			if(robotIteration > 1000)
-			{
-				System.out.println("Reseting robot iteration nr to avoid large numbers");
-				robotIteration = 0;
-			}
-			blackList = info.getBlackList();
-		} catch (FileNotFoundException ex) {
-			System.out.println("robot-info.bin file not found. Will create new file");
-			blackList = new HashMap<String,BlackListOperation>();
-			longTradingRecordsMap = new HashMap<String, TradingRecord>();
-			shortTradingRecordsMap = new HashMap<String, TradingRecord>();
-			for (String symbol : Configuration.instrumentsFX) {
-				longTradingRecordsMap.put(symbol, new BaseTradingRecord());
-				shortTradingRecordsMap.put(symbol, new BaseTradingRecord(OrderType.SELL));
-				System.out.println("Init trading record for " + symbol);
-			}
-		} catch (IOException e) {
-			throw new SerializationFailedException("Deserialization failed. IO Exception");
-		} catch (ClassNotFoundException e) {
-			throw new SerializationFailedException("Derialization failed. Class not found exception");
-		}
-
+	private static boolean checkTradePossible(boolean exited, boolean isSpreadAcceptable){
+		return !exited && isSpreadAcceptable && !Configuration.runTest;
 	}
 
 	private static boolean isSpreadAcceptable(SymbolResponse sr) {
-		Integer precisionNumber = sr.getSymbol().getPrecision();
-		ATRIndicator atr = new ATRIndicator(baseBarSeries, 14);
-		BigDecimal atrVal = BigDecimal.valueOf(atr.getValue(baseBarSeries.getEndIndex()).doubleValue());
+		ATRIndicator atr = new ATRIndicator(series, 14);
+		BigDecimal atrVal = BigDecimal.valueOf(atr.getValue(series.getEndIndex()).doubleValue());
 		BigDecimal spread = BigDecimal.valueOf(sr.getSymbol().getSpreadRaw());
 
 		BigDecimal atrVsSpread = spread.divide(atrVal, 2, RoundingMode.HALF_UP);
@@ -382,26 +152,7 @@ public class App {
 		return true;
 	}
 
-	private static void initWinningRatios() throws IOException {
-		winningRatioMap = new HashMap<String, HashMap<String, BigDecimal>>();
-		InputStream stream = Robot.class.getClassLoader().getResourceAsStream("winning_ratios.csv");
-		String strategyName = "";
 
-		try (CSVReader csvReader = new CSVReader(new InputStreamReader(stream, Charset.forName("UTF-8")), ';', '"',1)) {
-			String[] line;
-            while ((line = csvReader.readNext()) != null) {
-            	if(!line[0].equals(strategyName)){
-            		winningRatioMap.put(line[0], new HashMap<>());
-            		strategyName = line[0];
-            	}
-            	winningRatioMap.get(strategyName).put(line[1], new BigDecimal(line[2]));
-            }
-
-		} catch (IOException ioe) {
-			System.out.println("Unable to load winning ratios from CSV");
-			throw ioe;
-	    }
-	}
 
 
 }
