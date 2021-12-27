@@ -24,6 +24,7 @@ public class SatisfiedPriceActionIndicators extends PriceActionIndicators{
     private SumIndicator longEntrySignals;
     private SumIndicator shortEntrySignals;
     private DifferenceIndicator longMinusShortSignals;
+    private DifferenceIndicator shortMinusLongSignals;
 
 
 
@@ -47,6 +48,7 @@ public class SatisfiedPriceActionIndicators extends PriceActionIndicators{
         shortEntrySignals = new SumIndicator(satisfiedBearishPinbars, satisfiedBearishEngulfing, satisfiedBearishHarami, satisfiedBullishShrinkingCandles);
 
         longMinusShortSignals = new DifferenceIndicator(longEntrySignals, shortEntrySignals);
+        shortMinusLongSignals = new DifferenceIndicator(shortEntrySignals, longEntrySignals);
 
     }
 
@@ -93,4 +95,8 @@ public class SatisfiedPriceActionIndicators extends PriceActionIndicators{
     public DifferenceIndicator getLongMinusShortSignals() {
         return longMinusShortSignals;
     }
+    public DifferenceIndicator getShortMinusLongSignals() {
+        return shortMinusLongSignals;
+    }
+
 }

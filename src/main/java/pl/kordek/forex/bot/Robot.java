@@ -3,6 +3,11 @@ package pl.kordek.forex.bot;
 import org.ta4j.core.*;
 import org.ta4j.core.Order.OrderType;
 import org.ta4j.core.analysis.criteria.AverageProfitableTradesCriterion;
+import org.ta4j.core.indicators.ATRIndicator;
+import org.ta4j.core.indicators.helpers.ClosePriceIndicator;
+import org.ta4j.core.indicators.helpers.DifferenceIndicator;
+import org.ta4j.core.indicators.helpers.MultiplierIndicator;
+import org.ta4j.core.indicators.helpers.SumIndicator;
 import org.ta4j.core.num.Num;
 import pl.kordek.forex.bot.api.XTBSymbolOperations;
 import pl.kordek.forex.bot.checker.PositionChecker;
@@ -63,43 +68,38 @@ public class Robot {
 	public boolean runRobotIteration() throws XTBCommunicationException, InterruptedException {
 			int endIndex = series.getEndIndex();
 
-			DonchianIndicators donchianIndicators = new DonchianIndicators(series, parentSeries);
-			Indicator stopLossLongStrategy = donchianIndicators.getDonchianLower();
-			Indicator stopLossShortStrategy = donchianIndicators.getDonchianUpper();
+			ATRIndicator atr = new ATRIndicator(series,14);
 
-			if(!Configuration.runTest) {
-					boolean longPos = checkForPositions(longTradingRecord, new LongStrategyBuilder(series, parentSeries, stopLossLongStrategy));
-					if(longPos)
-						return true;
+			Indicator stopLossLongStrategy = new DifferenceIndicator(new ClosePriceIndicator(series), new MultiplierIndicator(atr, 5));
+			Indicator stopLossShortStrategy = new SumIndicator(new ClosePriceIndicator(series), new MultiplierIndicator(atr, 5));
 
-					boolean shortPos = checkForPositions(shortTradingRecord, new ShortStrategyBuilder(series, parentSeries, stopLossShortStrategy));
-					if(shortPos)
-						return true;
-			}
-			else {
-				if(Configuration.runTestFX.equals(currentSymbol)) {
-					StrategyTester tester = new StrategyTester(series, parentSeries);
-					tester.strategyTest(endIndex-Configuration.testedIndex, currentSymbol);
-				}
-			}
+			boolean longPos = checkForPositions(longTradingRecord, new LongStrategyBuilder(series, parentSeries, stopLossLongStrategy));
+			if(longPos)
+				return true;
+
+			boolean shortPos = checkForPositions(shortTradingRecord, new ShortStrategyBuilder(series, parentSeries, stopLossShortStrategy));
+			if(shortPos)
+				return true;
+
 			return false;
 	}
 
 	private boolean checkForPositions(TradingRecord tradingRecord, StrategyBuilder strategyBuilder) throws XTBCommunicationException {
 		OrderType orderType = strategyBuilder.orderType;
-		if(blackListOperation != null || blackListOperation.getTypeOfOperation() == orderType)
+		if(blackListOperation != null && blackListOperation.getTypeOfOperation() == orderType)
 			return false;
+		PositionChecker positionChecker = new PositionChecker(openedPositions);
+		boolean positionOpenedAndValid = positionChecker.isPositionOpenedAndOperationValid(currentSymbol, orderType);
 
 		String strategyWithEntrySignal = getStrategyWithEntrySignal(series.getEndIndex(), tradingRecord,
 				strategyBuilder.getStrategyList(), winningRatioMap, currentSymbol);
 		String strategyWithExitSignal = getStrategyWithExitSignal(series.getEndIndex(), tradingRecord,
 				strategyBuilder.getStrategyList());
 
-		PositionChecker positionChecker = new PositionChecker(openedPositions);
-		boolean positionOpenedAndValid = positionChecker.isPositionOpenedAndOperationValid(currentSymbol, orderType);
+
 
 		if (!positionOpenedAndValid && !strategyWithEntrySignal.isEmpty()) {
-			TradeInfo tradeInfo = getEntryTradeInfo(strategyBuilder.orderType, strategyBuilder.assessStrategyStrength(),
+			TradeInfo tradeInfo = getEntryTradeInfo(strategyBuilder,
 					strategyWithEntrySignal);
 			return positionChecker.enterPosition(api, tradingRecord, tradeInfo);
 
@@ -117,14 +117,15 @@ public class Robot {
 		return false;
 	}
 
-	private TradeInfo getEntryTradeInfo(OrderType orderType, Double strategyStrength, String strategyWithEntrySignal)
+	private TradeInfo getEntryTradeInfo(StrategyBuilder strategyBuilder, String strategyWithEntrySignal)
 			throws XTBCommunicationException {
-		BigDecimal stopLoss = volAndSLOperations.calculateStopLoss(orderType, series, strategyWithEntrySignal);
+		OrderType orderType = strategyBuilder.orderType.complementType();
+		BigDecimal stopLoss = volAndSLOperations.calculateStopLoss(orderType, strategyBuilder.stopLossStrategy, series);
 		BigDecimal takeProfit = volAndSLOperations.calculateTakeProfit(orderType, stopLoss);
 		System.out.println(new Date() + ": "+orderType + " strategy should ENTER on " + currentSymbol
 				+ ". Bar close price "+series.getLastBar().getClosePrice() + ". Stop Loss: "+stopLoss.doubleValue()+ " Take Profit: " + takeProfit.doubleValue());
 
-		Double volume = volAndSLOperations.getOptimalVolume(currentSymbol, strategyStrength);
+		Double volume = volAndSLOperations.getOptimalVolume(currentSymbol, strategyBuilder.assessStrategyStrength());
 
 		if(!volAndSLOperations.volumeAndSlChecks(volume, stopLoss.doubleValue())) {
 			return null;

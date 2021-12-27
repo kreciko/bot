@@ -17,6 +17,7 @@ public class GeneralIndicators {
     protected EMAIndicator trendLine200;
     protected EMASmartIndicator smartTrendLine50;
     protected EMASmartIndicator smartTrendLine200;
+    protected ParentIndicator parentTrendLine50;
     protected ParentIndicator smartParentTrendLine50;
     //private StopLossIndicator slIndicator;
 
@@ -28,7 +29,9 @@ public class GeneralIndicators {
         this.smartTrendLine200 = new EMASmartIndicator(closePrice, 200);
         ClosePriceIndicator parentClosePrice = new ClosePriceIndicator(parentSeries);
         this.smartParentTrendLine50 =
-                new ParentIndicator(new EMAIndicator(parentClosePrice, 50), 4);
+                new ParentIndicator(new EMASmartIndicator(parentClosePrice, 50), 6);
+        this.parentTrendLine50 =
+                new ParentIndicator(new EMAIndicator(parentClosePrice, 50), 6);
         //this.slIndicator = new StopLossIndicator(donchianLower, series, OrderType.BUY, 5, 2);
     }
 
@@ -54,5 +57,9 @@ public class GeneralIndicators {
 
     public ParentIndicator getSmartParentTrendLine50() {
         return smartParentTrendLine50;
+    }
+
+    public ParentIndicator getParentTrendLine50() {
+        return parentTrendLine50;
     }
 }

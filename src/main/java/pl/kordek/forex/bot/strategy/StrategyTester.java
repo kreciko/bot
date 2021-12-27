@@ -2,12 +2,9 @@ package pl.kordek.forex.bot.strategy;
 
 import java.util.List;
 
-import org.ta4j.core.BaseBarSeries;
-import org.ta4j.core.BaseTradingRecord;
-import org.ta4j.core.Rule;
-import org.ta4j.core.Strategy;
-import org.ta4j.core.TradingRecord;
+import org.ta4j.core.*;
 import org.ta4j.core.Order.OrderType;
+import org.ta4j.core.indicators.ATRIndicator;
 import org.ta4j.core.indicators.EMAIndicator;
 import org.ta4j.core.indicators.EMASmartIndicator;
 import org.ta4j.core.indicators.MACDIndicator;
@@ -19,23 +16,15 @@ import org.ta4j.core.indicators.donchian.DonchianFallingBarCountIndicator;
 import org.ta4j.core.indicators.donchian.DonchianIsFallingIndicator;
 import org.ta4j.core.indicators.donchian.DonchianIsRisingIndicator;
 import org.ta4j.core.indicators.donchian.DonchianRisingBarCountIndicator;
-import org.ta4j.core.indicators.helpers.ClosePriceIndicator;
-import org.ta4j.core.indicators.helpers.HighPriceIndicator;
-import org.ta4j.core.indicators.helpers.LowPriceIndicator;
-import org.ta4j.core.indicators.helpers.OpenPriceIndicator;
-import org.ta4j.core.indicators.helpers.PreviousValueIndicator;
-import org.ta4j.core.indicators.helpers.SatisfiedCountIndicator;
-import org.ta4j.core.indicators.helpers.StopLossPrcSmartIndicator;
+import org.ta4j.core.indicators.helpers.*;
 import org.ta4j.core.num.DoubleNum;
 import org.ta4j.core.num.Num;
-import org.ta4j.core.trading.rules.BooleanIndicatorRule;
-import org.ta4j.core.trading.rules.IsHighestRule;
-import org.ta4j.core.trading.rules.IsLowestRule;
-import org.ta4j.core.trading.rules.OverIndicatorRule;
-import org.ta4j.core.trading.rules.TrailingStopLossRule;
+import org.ta4j.core.trading.rules.*;
 
 import pl.kordek.forex.bot.constants.Configuration;
+import pl.kordek.forex.bot.indicator.GeneralIndicators;
 import pl.kordek.forex.bot.indicator.IchimokuIndicators;
+import pl.kordek.forex.bot.indicator.MACDIndicators;
 import pl.kordek.forex.bot.rules.PriceActionRules;
 import pl.kordek.forex.bot.rules.IchimokuRules;
 
@@ -52,8 +41,17 @@ public class StrategyTester {
 
 		StrategyBuilderOld stratBuilder = new StrategyBuilderOld(index, series, parentSeries);
 
-		List<Strategy> longStrategies = stratBuilder.buildLongStrategies();
-		List<Strategy> shortStrategies = stratBuilder.buildShortStrategies();
+		Indicator<Num> donchianIndLong =
+				new DonchianChannelLowerIndicator(series, 20);
+		Indicator<Num> donchianIndShort =
+				new DonchianChannelUpperIndicator(series, 20);
+
+		LongStrategyBuilder longStrategyBuilder = new LongStrategyBuilder(series, parentSeries, donchianIndLong);
+		ShortStrategyBuilder shortStrategyBuilder = new ShortStrategyBuilder(series, parentSeries, donchianIndShort);
+
+
+		List<Strategy> longStrategies = longStrategyBuilder.getStrategyList();
+		List<Strategy> shortStrategies = shortStrategyBuilder.getStrategyList();
 
 		OpenPriceIndicator openPrice = new OpenPriceIndicator(series);
 		ClosePriceIndicator closePrice = new ClosePriceIndicator(series);
@@ -68,9 +66,6 @@ public class StrategyTester {
 		}
 
 
-
-		IchimokuRules ichimokuRules = new IchimokuRules(index, series, parentSeries);
-
 		OrderType orderType = OrderType.BUY;
 		StopLossPrcSmartIndicator slIndicator = new StopLossPrcSmartIndicator(series, Configuration.stopLossMaxPrcFX, OrderType.BUY, 7);
 		double stopLossWithoutPrecision = slIndicator.getValue(index).doubleValue();//StopLossHelper.getNewStopLoss(index, series, orderType, 7).doubleValue();
@@ -81,32 +76,40 @@ public class StrategyTester {
 
 		System.out.println("StopLoss for index for orderType "+orderType+": " + stopLossWithoutPrecision);
 
-		ichimokuTest(index);
-		EMASmartIndicator emaMagic = new EMASmartIndicator(closePrice, 200);
-		EMASmartIndicator emaMagic50 = new EMASmartIndicator(closePrice, 50);
-		System.out.println("Ema magic: " + emaMagic.getValue(index));
-		System.out.println("Ema magic 50: " + emaMagic.getValue(index));
+		macdTest(index);
+		//priceActionTest(index);
 
+		GeneralIndicators genInd = new GeneralIndicators(series, parentSeries);
+//
+//		System.out.println("Ema magic: " + genInd.getSmartTrendLine200().getValue(index));
+//		System.out.println("Ema magic 50: " + genInd.getSmartTrendLine50().getValue(index));
+//
+//		System.out.println("GenInd Ema parent magic 50: " + genInd.getSmartParentTrendLine50().getValue(index));
 
-	}
-
-	public void strategyTest2( OrderType orderType, int index) {
-		TradingRecord testTradingRecord = new BaseTradingRecord(orderType);
-		ClosePriceIndicator closePrice = new ClosePriceIndicator(series);
-		Rule signalOut = new TrailingStopLossRule(closePrice, DoubleNum.valueOf(0.5));
-
-		boolean entered = testTradingRecord.enter(index, series.getBar(index).getClosePrice(),
-				DoubleNum.valueOf(Configuration.volume));
-
-		System.out.println("stop loss satisfied: " + signalOut.isSatisfied(series.getEndIndex(), testTradingRecord));
+		strategyShouldEnterForThelast(longStrategies,shortStrategies,symbol,index);
 
 	}
 
-	private void indicatorTest(int index, ClosePriceIndicator closePrice) {
-		MACDIndicator macd = new MACDIndicator(closePrice, 12 , 26);
-		EMAIndicator signal = new EMAIndicator(macd, 9);
-		System.out.println("MACD: " + macd.getValue(index));
-		System.out.println("signal: " + signal.getValue(index));
+	public void strategyShouldEnterForThelast(List<Strategy> longStrategies,List<Strategy> shortStrategies, String symbol, int index) {
+		int candleAmount = series.getEndIndex()-index;
+
+		System.out.println("Checking whether should enter in the last "+ candleAmount +" candles for :"+symbol);
+		for(Strategy longStrat : longStrategies) {
+			for(int i=index;i< series.getEndIndex();i++){
+				if(longStrat.shouldEnter(i)){
+					int candleAm = series.getEndIndex()-i;
+					System.out.println(longStrat.getName()+" Should enter LONG at :"+candleAm+ "th candle from end");
+				}
+			}
+		}
+		for(Strategy shortStrat : shortStrategies) {
+			for(int i=index;i< series.getEndIndex();i++){
+				if(shortStrat.shouldEnter(i)){
+					int candleAm = series.getEndIndex()-i;
+					System.out.println(shortStrat.getName()+" Should enter SHORT at :"+candleAm+ "th candle from end");
+				}
+			}
+		}
 	}
 
 	private void priceActionTest(int index) {
@@ -139,15 +142,17 @@ public class StrategyTester {
 		System.out.println("bullish shrinking candles: " + bullishShrinkingCandlesRule.isSatisfied(index));
 		System.out.println("bearish shrinking candles: " + bearishShrinkingCandlesRule.isSatisfied(index));
 
-		System.out.println("custom long satisfied: " + customLong.isSatisfied(index));
-		System.out.println("custom short satisfied: " + customShort.isSatisfied(index));
 
-		System.out.println("Long Entry Signal Count: "+ priceActionRules.getLongEntrySignals().getValue(index)+
-				". Short Entry Signal Count:"+ priceActionRules.getShortEntrySignals().getValue(index));
-
-
-		System.out.println("is highest: " + isHighest.isSatisfied(index));
-		System.out.println("is lowest: " + isLowest.isSatisfied(index));
+		System.out.println("Long sig:"+priceActionRules.getLongEntrySignals().getValue(index));
+		System.out.println("Short sig:"+priceActionRules.getShortEntrySignals().getValue(index));
+		System.out.println("Long prevail:"+priceActionRules.getLongSignalsPrevailRule(3).isSatisfied(index));
+		System.out.println("Short prevail:"+priceActionRules.getShortSignalsPrevailRule(3).isSatisfied(index));
+//
+		ATRIndicator atr = new ATRIndicator(series,14);
+		System.out.println("ATR :"+ atr.getValue(index));
+		System.out.println("Avg ATR :"+ new EMAIndicator(atr, 50).getValue(index));
+		System.out.println("Avg ATRx1.5 :"+ new MultiplierIndicator(new EMAIndicator(atr, 50), 1.5).getValue(index));
+		System.out.println("price action not too dynamic "+ priceActionRules.getPriceActionNotTooDynamic());
 	}
 
 	void donchianTest(int index){
@@ -184,5 +189,16 @@ public class StrategyTester {
 		System.out.println("KijunSen: "+ichimokuInd.getKijunSen().getValue(index));
 		System.out.println("Cloud bullish: "+ichimokuRules.getCloudBullish().isSatisfied(index));
 		System.out.println("Tenkan crosses kijun: "+ichimokuRules.getTenkanCrossesKijunUpRule().isSatisfied(index));
+	}
+
+	void macdTest(int index){
+		MACDIndicators macdInd = new MACDIndicators(series, parentSeries);
+
+		System.out.println("MACD: "+macdInd.getMacd().getValue(index));
+		System.out.println("Signal: "+ macdInd.getSignal().getValue(index));
+		System.out.println("Below 0: "+ new UnderIndicatorRule(macdInd.getMacd(), DoubleNum.valueOf(0)).isSatisfied(index));
+		System.out.println("CrossedUp: "+ new CrossedUpIndicatorRule(macdInd.getMacd(), macdInd.getSignal()).isSatisfied(index));
+		System.out.println("Over trendline 200: "+ new OverIndicatorRule(macdInd.getClosePrice(), macdInd.getTrendLine200()).isSatisfied(index));
+		System.out.println("Over parent trendline 50: "+ new OverIndicatorRule(macdInd.getClosePrice(), macdInd.getSmartParentTrendLine50()).isSatisfied(index));
 	}
 }

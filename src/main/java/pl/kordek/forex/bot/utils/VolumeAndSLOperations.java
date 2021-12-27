@@ -5,9 +5,10 @@ import org.ta4j.core.Indicator;
 import org.ta4j.core.Order.OrderType;
 import org.ta4j.core.Strategy;
 import org.ta4j.core.TradingRecord;
+import org.ta4j.core.indicators.ATRIndicator;
 import org.ta4j.core.indicators.donchian.DonchianChannelLowerIndicator;
 import org.ta4j.core.indicators.donchian.DonchianChannelUpperIndicator;
-import org.ta4j.core.indicators.helpers.StopLossIndicator;
+import org.ta4j.core.indicators.helpers.*;
 import org.ta4j.core.num.Num;
 import pl.kordek.forex.bot.api.XTBSymbolOperations;
 import pl.kordek.forex.bot.constants.Configuration;
@@ -35,17 +36,10 @@ public class VolumeAndSLOperations {
 	}
 
 	//------------------- SL AND TP CALCULATION ---------------
-	public BigDecimal calculateStopLoss(OrderType orderType, BaseBarSeries series, String strategyWithEntrySignal){
+	public BigDecimal calculateStopLoss(OrderType orderType, Indicator stopLossStrategy, BaseBarSeries series){
 		BigDecimal spread = BigDecimal.valueOf(symbolRecord.getSpreadRaw());
-
-		Indicator<Num> donchianInd = orderType == OrderType.BUY ?
-				new DonchianChannelLowerIndicator(series, 20) :
-				new DonchianChannelUpperIndicator(series, 20);
-
-		// stop loss with donchian channel + atr had better profit results than smart stop loss
 		Indicator<Num> stopLossInd =
-				 //new StopLossSmartIndicator(series, orderType, Configuration.stopLossBarCount, false)
-				 new StopLossIndicator(donchianInd, series, orderType);
+				 new StopLossIndicator(stopLossStrategy, series, orderType);
 
         int precisionNumber = symbolRecord.getPrecision();
 

@@ -6,6 +6,7 @@ import org.ta4j.core.indicators.helpers.SatisfiedCountIndicator;
 import org.ta4j.core.indicators.helpers.StopLossIndicator;
 import org.ta4j.core.num.DoubleNum;
 import org.ta4j.core.trading.rules.*;
+import pl.kordek.forex.bot.constants.Configuration;
 import pl.kordek.forex.bot.indicator.DonchianIndicators;
 import pl.kordek.forex.bot.indicator.GeneralIndicators;
 import pl.kordek.forex.bot.indicator.IchimokuIndicators;
@@ -14,27 +15,29 @@ import pl.kordek.forex.bot.rules.IchimokuRules;
 
 public class ShortStrategyBuilder extends StrategyBuilder {
     private Rule stopLossNotExceedingBounds;
-    private Rule longSignalsDontPrevail;
+    private Rule shortSignalsPrevail;
+
 
     public ShortStrategyBuilder(BaseBarSeries series, BaseBarSeries parentSeries, Indicator stopLossStrategy) {
         super(series,parentSeries);
 
         this.orderType = OrderType.SELL;
         this.typeOfOperation = 0;
+        this.stopLossStrategy = stopLossStrategy;
 
         this.stopLossNotExceedingBounds = new IsEqualRule(
-                new StopLossIndicator(stopLossStrategy, series, Order.OrderType.SELL, 5, 2), DoubleNum.valueOf(0)).negation();
-        this.longSignalsDontPrevail = priceActionRules.getLongSignalsPrevailRule(1).negation();
+                new StopLossIndicator(stopLossStrategy, series, Order.OrderType.SELL, Configuration.stopLossMaxATR, Configuration.stopLossMinATR), DoubleNum.valueOf(0)).negation();
+        this.shortSignalsPrevail = priceActionRules.getShortSignalsPrevailRule(1);
     }
 
     @Override
     public Strategy buildMACDStrategy() {
         MACDIndicators macdInd = new MACDIndicators(series, parentSeries);
-        Rule macdEntry = new UnderIndicatorRule(macdInd.getClosePrice(), macdInd.getSmartTrendLine200())
-                .and(new UnderIndicatorRule(macdInd.getClosePrice(), macdInd.getSmartParentTrendLine50()))
+        Rule macdEntry = new UnderIndicatorRule(macdInd.getClosePrice(), macdInd.getTrendLine200())
                 .and(new CrossedDownIndicatorRule(macdInd.getMacd(), macdInd.getSignal()))
                 .and(new OverIndicatorRule(macdInd.getMacd(), DoubleNum.valueOf(0)))
-                .and(longSignalsDontPrevail)
+                .and(shortSignalsPrevail)
+                .and(priceActionRules.getMarketNotChoppy())
                 .and(stopLossNotExceedingBounds);
         return new BaseStrategy("MACD", macdEntry, new BooleanRule(false));
     }
@@ -52,6 +55,8 @@ public class ShortStrategyBuilder extends StrategyBuilder {
                 .and(priceUnderCloud)
                 .and(tenkanUnderCloud)
                 .and(tenkanCrossesKijunDown)
+                .and(priceActionRules.getPriceActionNotTooDynamic())
+                .and(new UnderIndicatorRule(ichimokuInd.getClosePrice(), ichimokuInd.getTrendLine200()))
                 .and(new UnderIndicatorRule(ichimokuInd.getClosePrice(), ichimokuInd.getTenkanSen()));
 
         return new BaseStrategy("Ichimoku", ichimokuEntry, new BooleanRule(false));
@@ -63,10 +68,12 @@ public class ShortStrategyBuilder extends StrategyBuilder {
         Rule wasUpperDRisingInTheMeantime =  new OverIndicatorRule(
                 new SatisfiedCountIndicator(donchianInd.getIsUpperDRising(), donchianInd.getLowerDRisingCount()), 0);
 
-        Rule donchianEntry = new UnderIndicatorRule(donchianInd.getClosePrice(), donchianInd.getSmartTrendLine50())
+        Rule donchianEntry = new UnderIndicatorRule(donchianInd.getClosePrice(), donchianInd.getSmartTrendLine200())
                 .and(new BooleanIndicatorRule(donchianInd.getWasLowerDRising()))
                 .and(new BooleanIndicatorRule(donchianInd.getIsLowerDFalling()))
-                .and(wasUpperDRisingInTheMeantime).and(longSignalsDontPrevail)
+                .and(wasUpperDRisingInTheMeantime)
+                .and(shortSignalsPrevail)
+                .and(priceActionRules.getPriceActionNotTooDynamic())
                 .and(stopLossNotExceedingBounds);
 
         return new BaseStrategy("Donchian", donchianEntry , new BooleanRule(false));
@@ -75,9 +82,10 @@ public class ShortStrategyBuilder extends StrategyBuilder {
     @Override
     public Strategy buildPriceActionStrategy() {
         GeneralIndicators genInd = new GeneralIndicators(series, parentSeries);
-
-        Rule priceActionEntry = priceActionRules.getCustomPriceActionShortRule()
-                .and(new UnderIndicatorRule(genInd.getClosePrice(), genInd.getSmartTrendLine50()))
+        Rule priceActionEntry = new UnderIndicatorRule(genInd.getClosePrice(), genInd.getSmartTrendLine200())
+                .and(priceActionRules.getPriceActionNotTooDynamic())
+                .and(priceActionRules.getMarketNotChoppy())
+                .and(priceActionRules.getShortSignalsPrevailRule(3))
                 .and(stopLossNotExceedingBounds);
         return new BaseStrategy("PriceAction", priceActionEntry , new BooleanRule(false));
     }

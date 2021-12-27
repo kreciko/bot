@@ -23,15 +23,11 @@ public class IterationOperations {
             throws XTBCommunicationException {
 
         List<RateInfoRecord> rateInfos = api.getCharts(sinceDate, candlePeriod);
-        //List<RateInfoRecord> helperRateInfos = api.getCharts(sinceDate, Configuration.parentCandlePeriod);
 
         int precisionNumber = api.getSr().getSymbol().getPrecision();
         String symbol = api.getSr().getSymbol().getSymbol();
 
         BaseBarSeries series = convertRateInfoToBarSeries(rateInfos.subList(0, rateInfos.size() - 1), symbol, precisionNumber, duration);
-        //BaseBarSeries parentSeries =  convertRateInfoToBarSeries(helperRateInfos.subList(0, helperRateInfos.size() - 1), symbol, precisionNumber, parentDuration);
-
-
 
         return series;
     }

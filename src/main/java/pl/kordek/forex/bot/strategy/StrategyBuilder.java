@@ -1,9 +1,6 @@
 package pl.kordek.forex.bot.strategy;
 
-import org.ta4j.core.BaseBarSeries;
-import org.ta4j.core.Order;
-import org.ta4j.core.Rule;
-import org.ta4j.core.Strategy;
+import org.ta4j.core.*;
 import pl.kordek.forex.bot.constants.Configuration;
 import pl.kordek.forex.bot.rules.PriceActionRules;
 import pro.xstore.api.message.codes.TRADE_OPERATION_CODE;
@@ -15,6 +12,7 @@ import java.util.List;
 public abstract class StrategyBuilder {
     public Order.OrderType orderType;
     public int typeOfOperation;
+    public Indicator stopLossStrategy;
 
     protected BaseBarSeries series;
     protected BaseBarSeries parentSeries;
@@ -39,10 +37,10 @@ public abstract class StrategyBuilder {
     public List<Strategy> getStrategyList(){
         ArrayList<Strategy> strategies = new ArrayList<>();
         strategies.add(buildMACDStrategy());
-        strategies.add(buildIchimokuStrategy(series.getEndIndex()));
+//        strategies.add(buildIchimokuStrategy(series.getEndIndex()));
         strategies.add(buildPriceActionStrategy());
-        strategies.add(buildDonchianStrategy());
-        return null;
+//        strategies.add(buildDonchianStrategy());
+        return strategies;
     }
 
     protected double assessStrategyStrength(Rule strategyStrong, Rule strategyWeak){

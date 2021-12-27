@@ -18,6 +18,7 @@ import pl.kordek.forex.bot.constants.Configuration;
 import pl.kordek.forex.bot.domain.RobotInfo;
 import pl.kordek.forex.bot.exceptions.SerializationFailedException;
 import pl.kordek.forex.bot.exceptions.XTBCommunicationException;
+import pl.kordek.forex.bot.strategy.StrategyTester;
 import pl.kordek.forex.bot.utils.FinishOperations;
 import pl.kordek.forex.bot.utils.InitOperations;
 import pl.kordek.forex.bot.utils.IterationOperations;
@@ -71,6 +72,7 @@ public class App {
 				boolean exitedShort = exitIfNeeded(endIndex, symbol, robotInfo.getShortTradingRecordMap().get(symbol), openedPositions);
 				boolean exited = exitedLong || exitedShort;
 
+				runTestsIfNeeded(symbol);
 				//skip symbol, too wide spread or updated trade record
 				if(!checkTradePossible(exited, isSpreadAcceptable(symbolApi.getSr()))) {
 					continue;
@@ -84,7 +86,7 @@ public class App {
 			}
 
 			FinishOperations finishOperations = new FinishOperations(robotInfo);
-			finishOperations.updateBlackList(connector, durationMap.get(PERIOD_CODE.PERIOD_H1));
+			//finishOperations.updateBlackList(connector, durationMap.get(PERIOD_CODE.PERIOD_H1));
 
 			finishOperations.serializeFiles(robotInfoFileLocation);
 
@@ -94,7 +96,7 @@ public class App {
 		} catch (Exception e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
-			System.out.println(new Date() +": Other Exception:" + e.getStackTrace());
+			System.out.println(new Date() +": Other Exception:" + e.getStackTrace().toString());
 			return;
 		}
 
@@ -132,6 +134,13 @@ public class App {
 			return true;
 		}
 		return false;
+	}
+
+	private static void runTestsIfNeeded(String currentSymbol){
+		if(Configuration.runTest && Configuration.runTestFX.equals(currentSymbol)){
+			StrategyTester tester = new StrategyTester(series, parentSeries);
+			tester.strategyTest(series.getEndIndex()-Configuration.testedIndex, currentSymbol);
+		}
 	}
 
 	private static boolean checkTradePossible(boolean exited, boolean isSpreadAcceptable){

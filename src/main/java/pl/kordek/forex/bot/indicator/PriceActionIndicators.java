@@ -1,6 +1,7 @@
 package pl.kordek.forex.bot.indicator;
 
 import org.ta4j.core.BarSeries;
+import org.ta4j.core.indicators.ChoppyMarketIndicator;
 import org.ta4j.core.indicators.candles.*;
 import org.ta4j.core.indicators.helpers.PreviousValueIndicator;
 import org.ta4j.core.num.DoubleNum;
@@ -32,6 +33,8 @@ public class PriceActionIndicators extends GeneralIndicators{
     protected BullishShrinkingCandlesIndicator bullishShrinkingCandlesIndicator;
     protected BearishShrinkingCandlesIndicator bearishShrinkingCandlesIndicator;
 
+    protected ChoppyMarketIndicator choppyMarketIndicator;
+
     public PriceActionIndicators(BarSeries series, BarSeries parentSeries) {
         super(series, parentSeries);
 
@@ -55,6 +58,8 @@ public class PriceActionIndicators extends GeneralIndicators{
 
         bullishShrinkingCandlesIndicator = new BullishShrinkingCandlesIndicator(series, shrinkingCandlesBarCount, true);
         bearishShrinkingCandlesIndicator = new BearishShrinkingCandlesIndicator(series, shrinkingCandlesBarCount, true);
+
+        choppyMarketIndicator = new ChoppyMarketIndicator(series);
     }
 
     public BearishEngulfingIndicator getBearishEngulfingInd() {
@@ -113,4 +118,7 @@ public class PriceActionIndicators extends GeneralIndicators{
         return bearishShrinkingCandlesIndicator;
     }
 
+    public ChoppyMarketIndicator getChoppyMarketIndicator() {
+        return choppyMarketIndicator;
+    }
 }

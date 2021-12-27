@@ -96,4 +96,6 @@ public class XTBOperations {
             throw new XTBCommunicationException("Couldn't log in to the XTB");
         }
     }
+
+
 }

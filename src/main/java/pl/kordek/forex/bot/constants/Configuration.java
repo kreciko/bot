@@ -11,7 +11,7 @@ import org.apache.commons.lang3.time.DateUtils;
 public interface Configuration {
 	ServerEnum server = ServerEnum.DEMO;
 
-	int waitingTime = 120000;
+	int waitingTime = 60000;
 
     String realUsrName = "1426627";
     String realPassword = "youw1nKordian!";
@@ -35,8 +35,8 @@ public interface Configuration {
 
 	String[] instrumentsFX = majorFX;
 
-    PERIOD_CODE candlePeriod = PERIOD_CODE.PERIOD_M15;
-    PERIOD_CODE parentCandlePeriod = PERIOD_CODE.PERIOD_H1;
+    PERIOD_CODE candlePeriod = PERIOD_CODE.PERIOD_M5;
+    PERIOD_CODE parentCandlePeriod = PERIOD_CODE.PERIOD_M30;
     Integer chartPeriodInHours = 24;
     Double volume = 0.1;
 
@@ -49,7 +49,7 @@ public interface Configuration {
     Double stopLossMaxPrcFX = 0.2;
     Double stopLossMaxPrcOthers = 0.5;
     Boolean stopLossSetToLastCandle = false;
-    int stopLossMaxATR = 5;
+    int stopLossMaxATR = 7;
     int stopLossMinATR = 2;
 
     Boolean updateStopLoss = true;
@@ -60,13 +60,13 @@ public interface Configuration {
 
     //test vars
     Boolean runTest = false;
-    String runTestFX = "GBPUSD";
-    int testedIndex = 46;
+    String runTestFX = "USDCHF";
+    int testedIndex = 9;
     int testWaitingTime = 1000;
 
     Boolean runBot = true;
 
     Boolean considerStratetyStrength = false;
 
-    Double minWinningRate = 0.48;
+    Double minWinningRate = 0.42;
 }

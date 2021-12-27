@@ -16,7 +16,7 @@ import pl.kordek.forex.bot.rules.IchimokuRules;
 public class LongStrategyBuilder extends StrategyBuilder {
 
     private Rule stopLossNotExceedingBounds;
-    private Rule shortSignalsDontPrevail;
+    private Rule longSignalsPrevail;
 
 
     public LongStrategyBuilder(BaseBarSeries series, BaseBarSeries parentSeries, Indicator stopLossStrategy) {
@@ -24,20 +24,21 @@ public class LongStrategyBuilder extends StrategyBuilder {
 
         this.orderType = OrderType.BUY;
         this.typeOfOperation = 0;
+        this.stopLossStrategy = stopLossStrategy;
 
         this.stopLossNotExceedingBounds = new IsEqualRule(
                 new StopLossIndicator(stopLossStrategy, series, Order.OrderType.BUY, Configuration.stopLossMaxATR, Configuration.stopLossMinATR), DoubleNum.valueOf(0)).negation();
-        this.shortSignalsDontPrevail = priceActionRules.getShortSignalsPrevailRule(1).negation();
+        this.longSignalsPrevail = priceActionRules.getLongSignalsPrevailRule(1);
     }
 
     @Override
     public Strategy buildMACDStrategy() {
         MACDIndicators macdInd = new MACDIndicators(series, parentSeries);
         Rule macdEntry = new OverIndicatorRule(macdInd.getClosePrice(), macdInd.getTrendLine200())
-                .and(new OverIndicatorRule(macdInd.getClosePrice(), macdInd.getSmartParentTrendLine50()))
                 .and(new CrossedUpIndicatorRule(macdInd.getMacd(), macdInd.getSignal()))
                 .and(new UnderIndicatorRule(macdInd.getMacd(), DoubleNum.valueOf(0)))
-                .and(shortSignalsDontPrevail)
+                .and(longSignalsPrevail)
+                .and(priceActionRules.getMarketNotChoppy())
                 .and(stopLossNotExceedingBounds);
         return new BaseStrategy("MACD", macdEntry, new BooleanRule(false));
     }
@@ -55,6 +56,8 @@ public class LongStrategyBuilder extends StrategyBuilder {
                 .and(priceOverCloud)
                 .and(tenkanOverCloud)
                 .and(tenkanCrossesKijunUp)
+                .and(priceActionRules.getPriceActionNotTooDynamic())
+                .and(new OverIndicatorRule(ichimokuInd.getClosePrice(), ichimokuInd.getTrendLine200()))
                 .and(new OverIndicatorRule(ichimokuInd.getClosePrice(), ichimokuInd.getTenkanSen()));
         return new BaseStrategy("Ichimoku", ichimokuEntry, new BooleanRule(false));
     }
@@ -65,10 +68,12 @@ public class LongStrategyBuilder extends StrategyBuilder {
         Rule wasLowerDFallingInTheMeantime =  new OverIndicatorRule(
                 new SatisfiedCountIndicator(donchianInd.getIsLowerDFalling(), donchianInd.getUpperDFallingCount()), 0);
 
-        Rule donchianEntry = new OverIndicatorRule(donchianInd.getClosePrice(), donchianInd.getSmartTrendLine50())
+        Rule donchianEntry = new OverIndicatorRule(donchianInd.getClosePrice(), donchianInd.getSmartTrendLine200())
                 .and(new BooleanIndicatorRule(donchianInd.getWasUpperDFalling()))
                 .and(new BooleanIndicatorRule(donchianInd.getIsUpperDRising()))
-                .and(wasLowerDFallingInTheMeantime).and(shortSignalsDontPrevail)
+                .and(wasLowerDFallingInTheMeantime)
+                .and(longSignalsPrevail)
+                .and(priceActionRules.getPriceActionNotTooDynamic())
                 .and(stopLossNotExceedingBounds);
         return new BaseStrategy("Donchian", donchianEntry , new BooleanRule(false));
     }
@@ -76,8 +81,10 @@ public class LongStrategyBuilder extends StrategyBuilder {
     @Override
     public Strategy buildPriceActionStrategy() {
         GeneralIndicators genInd = new GeneralIndicators(series, parentSeries);
-        Rule priceActionEntry = priceActionRules.getCustomPriceActionLongRule()
-                .and(new OverIndicatorRule(genInd.getClosePrice(), genInd.getSmartTrendLine50()))
+        Rule priceActionEntry = new OverIndicatorRule(genInd.getClosePrice(), genInd.getSmartTrendLine200())
+                .and(priceActionRules.getPriceActionNotTooDynamic())
+                .and(priceActionRules.getMarketNotChoppy())
+                .and(priceActionRules.getLongSignalsPrevailRule(3))
                 .and(stopLossNotExceedingBounds);
         return new BaseStrategy("PriceAction", priceActionEntry , new BooleanRule(false));
     }
