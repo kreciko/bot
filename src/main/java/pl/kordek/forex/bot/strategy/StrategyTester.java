@@ -3,11 +3,10 @@ package pl.kordek.forex.bot.strategy;
 import java.util.List;
 
 import org.ta4j.core.*;
-import org.ta4j.core.Order.OrderType;
+import org.ta4j.core.Trade.TradeType;
 import org.ta4j.core.indicators.ATRIndicator;
 import org.ta4j.core.indicators.EMAIndicator;
 import org.ta4j.core.indicators.EMASmartIndicator;
-import org.ta4j.core.indicators.MACDIndicator;
 import org.ta4j.core.indicators.candles.BearishEngulfingIndicator;
 import org.ta4j.core.indicators.candles.BullishEngulfingIndicator;
 import org.ta4j.core.indicators.donchian.DonchianChannelLowerIndicator;
@@ -19,7 +18,7 @@ import org.ta4j.core.indicators.donchian.DonchianRisingBarCountIndicator;
 import org.ta4j.core.indicators.helpers.*;
 import org.ta4j.core.num.DoubleNum;
 import org.ta4j.core.num.Num;
-import org.ta4j.core.trading.rules.*;
+import org.ta4j.core.rules.*;
 
 import pl.kordek.forex.bot.constants.Configuration;
 import pl.kordek.forex.bot.indicator.GeneralIndicators;
@@ -66,25 +65,14 @@ public class StrategyTester {
 		}
 
 
-		OrderType orderType = OrderType.BUY;
-		StopLossPrcSmartIndicator slIndicator = new StopLossPrcSmartIndicator(series, Configuration.stopLossMaxPrcFX, OrderType.BUY, 7);
-		double stopLossWithoutPrecision = slIndicator.getValue(index).doubleValue();//StopLossHelper.getNewStopLoss(index, series, orderType, 7).doubleValue();
-
+		TradeType tradeType = TradeType.BUY;
 
 		System.out.println("symbol: " + symbol);
-
-
-		System.out.println("StopLoss for index for orderType "+orderType+": " + stopLossWithoutPrecision);
 
 		macdTest(index);
 		//priceActionTest(index);
 
 		GeneralIndicators genInd = new GeneralIndicators(series, parentSeries);
-//
-//		System.out.println("Ema magic: " + genInd.getSmartTrendLine200().getValue(index));
-//		System.out.println("Ema magic 50: " + genInd.getSmartTrendLine50().getValue(index));
-//
-//		System.out.println("GenInd Ema parent magic 50: " + genInd.getSmartParentTrendLine50().getValue(index));
 
 		strategyShouldEnterForThelast(longStrategies,shortStrategies,symbol,index);
 
@@ -151,7 +139,7 @@ public class StrategyTester {
 		ATRIndicator atr = new ATRIndicator(series,14);
 		System.out.println("ATR :"+ atr.getValue(index));
 		System.out.println("Avg ATR :"+ new EMAIndicator(atr, 50).getValue(index));
-		System.out.println("Avg ATRx1.5 :"+ new MultiplierIndicator(new EMAIndicator(atr, 50), 1.5).getValue(index));
+		System.out.println("Avg ATRx1.5 :"+ TransformIndicator.multiply(new EMAIndicator(atr, 50), 1.5).getValue(index));
 		System.out.println("price action not too dynamic "+ priceActionRules.getPriceActionNotTooDynamic());
 	}
 

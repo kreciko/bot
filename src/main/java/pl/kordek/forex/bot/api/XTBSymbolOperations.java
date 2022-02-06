@@ -1,9 +1,8 @@
 package pl.kordek.forex.bot.api;
 
-import org.ta4j.core.Order.OrderType;
+import org.ta4j.core.Trade.TradeType;
 import pl.kordek.forex.bot.exceptions.XTBCommunicationException;
 import pro.xstore.api.message.codes.PERIOD_CODE;
-import pro.xstore.api.message.codes.TRADE_OPERATION_CODE;
 import pro.xstore.api.message.codes.TRADE_TRANSACTION_TYPE;
 import pro.xstore.api.message.command.APICommandFactory;
 import pro.xstore.api.message.error.APICommandConstructionException;
@@ -11,7 +10,6 @@ import pro.xstore.api.message.error.APICommunicationException;
 import pro.xstore.api.message.error.APIReplyParseException;
 import pro.xstore.api.message.records.RateInfoRecord;
 import pro.xstore.api.message.records.SymbolRecord;
-import pro.xstore.api.message.records.TradeRecord;
 import pro.xstore.api.message.records.TradeTransInfoRecord;
 import pro.xstore.api.message.response.*;
 import pro.xstore.api.sync.SyncAPIConnector;
@@ -19,7 +17,6 @@ import pro.xstore.api.sync.SyncAPIConnector;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
 
 public class XTBSymbolOperations extends XTBOperations{
@@ -30,10 +27,10 @@ public class XTBSymbolOperations extends XTBOperations{
         this.sr = APICommandFactory.executeSymbolCommand(connector, symbol);
     }
 
-    public void enterXTB(OrderType orderType, BigDecimal stopLoss, BigDecimal takeProfit,
+    public void enterXTB(TradeType tradeType, BigDecimal stopLoss, BigDecimal takeProfit,
                          double volume, String strategyWithEntrySignal) throws XTBCommunicationException {
         SymbolRecord symbolRecord = sr.getSymbol();
-        TradeTransInfoRecord ttInfoRecord = new TradeTransInfoRecord(orderTypeXTBMap.get(orderType),
+        TradeTransInfoRecord ttInfoRecord = new TradeTransInfoRecord(tradeTypeXTBMap.get(tradeType),
                 TRADE_TRANSACTION_TYPE.OPEN, symbolRecord.getBid(), stopLoss.doubleValue() , takeProfit.doubleValue() , symbolRecord.getSymbol(), volume, 0L, strategyWithEntrySignal, 0L);
 
         try {

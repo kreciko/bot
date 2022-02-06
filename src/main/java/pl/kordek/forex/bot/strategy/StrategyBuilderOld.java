@@ -5,7 +5,7 @@ import java.util.Date;
 import java.util.List;
 
 import org.ta4j.core.*;
-import org.ta4j.core.Order.OrderType;
+import org.ta4j.core.Trade.TradeType;
 import org.ta4j.core.indicators.EMAIndicator;
 import org.ta4j.core.indicators.EMASmartIndicator;
 import org.ta4j.core.indicators.MACDIndicator;
@@ -19,12 +19,11 @@ import org.ta4j.core.indicators.donchian.DonchianRisingBarCountIndicator;
 import org.ta4j.core.indicators.helpers.*;
 import org.ta4j.core.num.DoubleNum;
 import org.ta4j.core.num.Num;
-import org.ta4j.core.trading.rules.*;
+import org.ta4j.core.rules.*;
 
 import pl.kordek.forex.bot.constants.Configuration;
 import pl.kordek.forex.bot.rules.PriceActionRules;
 import pl.kordek.forex.bot.rules.IchimokuRules;
-import pro.xstore.api.message.codes.TRADE_OPERATION_CODE;
 
 
 public class StrategyBuilderOld {
@@ -79,7 +78,7 @@ public class StrategyBuilderOld {
 	public List<Strategy> buildLongStrategies() {
         Rule shortSignalsDontPrevail = priceActionRules.getShortSignalsPrevailRule(1).negation();
 		Rule stopLossNotExeedingBounds = new IsEqualRule(
-				new StopLossIndicator(donchianLower, series, OrderType.BUY, 5, 2), DoubleNum.valueOf(0)).negation();
+				new StopLossIndicator(donchianLower, series, TradeType.BUY, 5, 2), DoubleNum.valueOf(0)).negation();
 
 		//MACD Strategy
         Rule macdEntry = new OverIndicatorRule(closePrice, trendLine200)
@@ -114,7 +113,7 @@ public class StrategyBuilderOld {
 				.and(new OverIndicatorRule(closePrice, smartTrendLine50))
 				.and(stopLossNotExeedingBounds);
 
-		Rule donchianEntry = createDonchianEntry(OrderType.BUY);
+		Rule donchianEntry = createDonchianEntry(TradeType.BUY);
 
 		List<Strategy> strategies = getStrategies(macdEntry, rsiEntry, priceActionEntry, donchianEntry, ichimokuEntry);
 
@@ -124,7 +123,7 @@ public class StrategyBuilderOld {
 	public List<Strategy> buildShortStrategies() {
         Rule longSignalsDontPrevail = priceActionRules.getLongSignalsPrevailRule(1).negation();
 		Rule stopLossNotExceedingBounds = new IsEqualRule(
-				new StopLossIndicator(donchianUpper, series, OrderType.SELL, 5, 2), DoubleNum.valueOf(0)).negation();
+				new StopLossIndicator(donchianUpper, series, TradeType.SELL, 5, 2), DoubleNum.valueOf(0)).negation();
 
 
 		//MACD Strategy
@@ -158,7 +157,7 @@ public class StrategyBuilderOld {
 				.and(new UnderIndicatorRule(closePrice, smartTrendLine50))
 				.and(stopLossNotExceedingBounds);;
 
-		Rule donchianEntry = createDonchianEntry(OrderType.SELL);
+		Rule donchianEntry = createDonchianEntry(TradeType.SELL);
 
 		List<Strategy> strategies = getStrategies(macdEntry, rsiEntry, priceActionEntry, donchianEntry, ichimokuEntry);
 
@@ -176,7 +175,7 @@ public class StrategyBuilderOld {
 		return strategies;
 	}
 
-	private Rule createDonchianEntry(OrderType orderType) {
+	private Rule createDonchianEntry(TradeType tradeType) {
         Rule shortSignalsDontPrevail = priceActionRules.getShortSignalsPrevailRule(1).negation();
         Rule longSignalsDontPrevail = priceActionRules.getLongSignalsPrevailRule(1).negation();
 
@@ -190,13 +189,13 @@ public class StrategyBuilderOld {
 
 		EMASmartIndicator smartTrendLine = new EMASmartIndicator(closePrice, 50);
 
-		Indicator indForSL = orderType == orderType.BUY ? donchianLower : donchianUpper;
+		Indicator indForSL = tradeType == tradeType.BUY ? donchianLower : donchianUpper;
 
 		Rule stopLossNotExceedingBounds = new IsEqualRule(
-				new StopLossIndicator(indForSL, series, orderType, 5, 2), DoubleNum.valueOf(0)).negation();
+				new StopLossIndicator(indForSL, series, tradeType, 5, 2), DoubleNum.valueOf(0)).negation();
 
 		Rule donchianEntry = null;
-		if(orderType == orderType.BUY) {
+		if(tradeType == tradeType.BUY) {
 			PreviousValueIndicator<Boolean> wasUpperDFalling = new PreviousValueIndicator<>(isUpperDFalling);
 			DonchianFallingBarCountIndicator upperDFallingCount = new DonchianFallingBarCountIndicator(prevUpperD);
 			Rule wasLowerDFallingInTheMeantime =  new OverIndicatorRule(new SatisfiedCountIndicator(isLowerDFalling, upperDFallingCount), 0);
@@ -227,11 +226,11 @@ public class StrategyBuilderOld {
 
 
 	//
-	public static double assessStrategyStrength(OrderType orderType, BaseBarSeries series, BaseBarSeries parentSeries) {
+	public static double assessStrategyStrength(TradeType tradeType, BaseBarSeries series, BaseBarSeries parentSeries) {
 
 		PriceActionRules priceActionRules = new PriceActionRules(series, parentSeries);
-		Rule strategyStrong = orderType == OrderType.BUY ? priceActionRules.getLongSignalsPrevailRule(2) : priceActionRules.getShortSignalsPrevailRule(2);
-		Rule strategyWeak = orderType == OrderType.BUY ? priceActionRules.getShortSignalsPrevailRule(2) : priceActionRules.getLongSignalsPrevailRule(2);
+		Rule strategyStrong = tradeType == TradeType.BUY ? priceActionRules.getLongSignalsPrevailRule(2) : priceActionRules.getShortSignalsPrevailRule(2);
+		Rule strategyWeak = tradeType == TradeType.BUY ? priceActionRules.getShortSignalsPrevailRule(2) : priceActionRules.getLongSignalsPrevailRule(2);
 		Double strategyStrength = 1.0;
 
 

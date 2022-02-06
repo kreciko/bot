@@ -4,29 +4,20 @@ import org.ta4j.core.BaseBarSeries;
 import org.ta4j.core.Rule;
 import org.ta4j.core.indicators.ATRIndicator;
 import org.ta4j.core.indicators.EMAIndicator;
-import org.ta4j.core.indicators.candles.BearishEngulfingIndicator;
-import org.ta4j.core.indicators.candles.BearishHaramiIndicator;
 import org.ta4j.core.indicators.candles.BearishPinBarIndicator;
 import org.ta4j.core.indicators.candles.BearishShrinkingCandlesIndicator;
-import org.ta4j.core.indicators.candles.BullishEngulfingIndicator;
-import org.ta4j.core.indicators.candles.BullishHaramiIndicator;
 import org.ta4j.core.indicators.candles.BullishPinBarIndicator;
 import org.ta4j.core.indicators.candles.BullishShrinkingCandlesIndicator;
-import org.ta4j.core.indicators.candles.ThreeBlackCrowsIndicator;
-import org.ta4j.core.indicators.candles.ThreeWhiteSoldiersIndicator;
 import org.ta4j.core.indicators.helpers.*;
 import org.ta4j.core.num.DoubleNum;
-import org.ta4j.core.trading.rules.BooleanIndicatorRule;
-import org.ta4j.core.trading.rules.CrossedDownIndicatorRule;
-import org.ta4j.core.trading.rules.CrossedUpIndicatorRule;
-import org.ta4j.core.trading.rules.IsFallingRule;
-import org.ta4j.core.trading.rules.IsHighestRule;
-import org.ta4j.core.trading.rules.IsLowestRule;
-import org.ta4j.core.trading.rules.IsRisingRule;
-import org.ta4j.core.trading.rules.OverIndicatorRule;
-import org.ta4j.core.trading.rules.UnderIndicatorRule;
+import org.ta4j.core.rules.BooleanIndicatorRule;
+import org.ta4j.core.rules.CrossedDownIndicatorRule;
+import org.ta4j.core.rules.CrossedUpIndicatorRule;
+import org.ta4j.core.rules.IsFallingRule;
+import org.ta4j.core.rules.IsRisingRule;
+import org.ta4j.core.rules.OverIndicatorRule;
+import org.ta4j.core.rules.UnderIndicatorRule;
 import pl.kordek.forex.bot.indicator.SatisfiedPriceActionIndicators;
-import pro.xstore.api.message.codes.TRADE_OPERATION_CODE;
 
 public class PriceActionRules {
 	private SatisfiedPriceActionIndicators satisfiedPriceActionIndicators;
@@ -73,7 +64,7 @@ public class PriceActionRules {
 
 		ATRIndicator atr = new ATRIndicator(series,14);
 		EMAIndicator atrAverage = new EMAIndicator(atr, 50);
-		priceActionNotTooDynamic = new UnderIndicatorRule(atr, new MultiplierIndicator(atrAverage, 1.5));
+		priceActionNotTooDynamic = new UnderIndicatorRule(atr, TransformIndicator.multiply(atrAverage, 1.5));
 
 		marketNotChoppy = new OverIndicatorRule(satisfiedPriceActionIndicators.getChoppyMarketIndicator(), 2);
 		createCustomPriceActionRules();

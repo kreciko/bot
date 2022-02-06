@@ -1,15 +1,12 @@
 package pl.kordek.forex.bot.checker;
 
 import org.ta4j.core.BaseBarSeries;
-import org.ta4j.core.BaseTradingRecord;
-import org.ta4j.core.Order;
-import org.ta4j.core.Order.OrderType;
+import org.ta4j.core.Trade.TradeType;
 import org.ta4j.core.TradingRecord;
 import org.ta4j.core.num.DoubleNum;
 import pl.kordek.forex.bot.api.XTBSymbolOperations;
 import pl.kordek.forex.bot.domain.TradeInfo;
 import pl.kordek.forex.bot.exceptions.XTBCommunicationException;
-import pl.kordek.forex.bot.strategy.StrategyBuilder;
 import pro.xstore.api.message.records.TradeRecord;
 
 import java.util.ArrayList;
@@ -27,8 +24,8 @@ public class PositionChecker {
         this.openedPositions = new ArrayList<>();
     }
 
-    public boolean isPositionOpenedAndOperationValid(String symbol, OrderType orderType){
-        int typeOfOperation = orderType == orderType.BUY ? 0 : 1;
+    public boolean isPositionOpenedAndOperationValid(String symbol, TradeType tradeType){
+        int typeOfOperation = tradeType == tradeType.BUY ? 0 : 1;
         boolean positionOpened =  openedPositions.stream()
                 .anyMatch(e -> e.getSymbol().equals(symbol));
         boolean operationValid = openedPositions.stream()
@@ -53,12 +50,12 @@ public class PositionChecker {
         boolean entered = tradingRecord.enter(series.getEndIndex(), series.getLastBar().getClosePrice(),
                 DoubleNum.valueOf(dummyVolume), tradeInfo.getStrategyName());
         if (entered) {
-            api.enterXTB(tradeInfo.getOrderType(), tradeInfo.getStopLoss(), tradeInfo.getTakeProfit(),
+            api.enterXTB(tradeInfo.getTradeType(), tradeInfo.getStopLoss(), tradeInfo.getTakeProfit(),
                     tradeInfo.getVolume(), tradeInfo.getStrategyName());
             System.out.println(new Date() + ": Opened in XTB successfully");
             return true;
         } else {
-            System.out.println(new Date() + ": Didn't enter "+tradeInfo.getOrderType()+" position for: " + series.getName());
+            System.out.println(new Date() + ": Didn't enter "+tradeInfo.getTradeType()+" position for: " + series.getName());
         }
 
         return false;
@@ -67,16 +64,16 @@ public class PositionChecker {
     public boolean exitPosition(XTBSymbolOperations api, BaseBarSeries series, TradingRecord tradingRecord,
                                 TradeRecord xtbTradeRecord) throws XTBCommunicationException {
         double dummyVolume = 0.05;
-        OrderType orderType = tradingRecord.getStartingType();
+        TradeType tradeType = tradingRecord.getStartingType();
 
         boolean exited = tradingRecord.exit(series.getEndIndex(), series.getLastBar().getClosePrice(),
                 DoubleNum.valueOf(dummyVolume));
         if (exited) {
-            api.exitXTB(xtbTradeRecord, orderType);
+            api.exitXTB(xtbTradeRecord, tradeType);
             System.out.println(new Date() + ": Closed in XTB successfully");
             return true;
         } else {
-            System.out.println(new Date() + ": Didn't exit "+ orderType+" position for: " + xtbTradeRecord.getSymbol());
+            System.out.println(new Date() + ": Didn't exit "+ tradeType+" position for: " + xtbTradeRecord.getSymbol());
         }
 
         return false;

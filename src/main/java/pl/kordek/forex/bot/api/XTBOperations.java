@@ -1,7 +1,7 @@
 package pl.kordek.forex.bot.api;
 
-import org.ta4j.core.Order;
-import org.ta4j.core.Order.OrderType;
+import org.ta4j.core.Trade;
+import org.ta4j.core.Trade.TradeType;
 import pl.kordek.forex.bot.constants.Configuration;
 import pl.kordek.forex.bot.exceptions.XTBCommunicationException;
 import pro.xstore.api.message.codes.TRADE_OPERATION_CODE;
@@ -26,13 +26,13 @@ import java.util.List;
 
 public class XTBOperations {
     protected SyncAPIConnector connector = null;
-    protected HashMap<OrderType, TRADE_OPERATION_CODE> orderTypeXTBMap;
+    protected HashMap<TradeType , TRADE_OPERATION_CODE> tradeTypeXTBMap;
 
     public XTBOperations(SyncAPIConnector connector) {
         this.connector = connector;
-        this.orderTypeXTBMap = new HashMap<>();
-        orderTypeXTBMap.put(OrderType.BUY, TRADE_OPERATION_CODE.BUY);
-        orderTypeXTBMap.put(OrderType.SELL, TRADE_OPERATION_CODE.SELL);
+        this.tradeTypeXTBMap = new HashMap<>();
+        tradeTypeXTBMap.put(TradeType.BUY, TRADE_OPERATION_CODE.BUY);
+        tradeTypeXTBMap.put(TradeType.SELL, TRADE_OPERATION_CODE.SELL);
     }
 
     public List<TradeRecord> getOpenedPositions() throws XTBCommunicationException {
@@ -54,10 +54,10 @@ public class XTBOperations {
         return marginLevelResponse.getMargin_free();
     }
 
-    public void exitXTB(TradeRecord tr, Order.OrderType orderType) throws XTBCommunicationException {
+    public void exitXTB(TradeRecord tr, TradeType tradeType) throws XTBCommunicationException {
         if(tr==null)
             return;
-        TradeTransInfoRecord ttInfoRecord = new TradeTransInfoRecord(orderTypeXTBMap.get(orderType),
+        TradeTransInfoRecord ttInfoRecord = new TradeTransInfoRecord(tradeTypeXTBMap.get(tradeType),
                 TRADE_TRANSACTION_TYPE.CLOSE, tr.getClose_price(), tr.getSl(), tr.getTp(), tr.getSymbol(), tr.getVolume(), tr.getOrder(), tr.getComment(), tr.getExpiration());
         try {
             APICommandFactory.executeTradeTransactionCommand(connector, ttInfoRecord);
@@ -70,10 +70,10 @@ public class XTBOperations {
 
     }
 
-    public void updateStopLossXTB(TradeRecord tr, OrderType orderType) throws XTBCommunicationException {
+    public void updateStopLossXTB(TradeRecord tr, TradeType tradeType) throws XTBCommunicationException {
         double stopLoss = tr.getOpen_price();
 
-        TradeTransInfoRecord ttInfoRecord = new TradeTransInfoRecord(orderTypeXTBMap.get(orderType),
+        TradeTransInfoRecord ttInfoRecord = new TradeTransInfoRecord(tradeTypeXTBMap.get(tradeType),
                 TRADE_TRANSACTION_TYPE.MODIFY, tr.getClose_price(), stopLoss, tr.getTp(), tr.getSymbol(), tr.getVolume(), tr.getOrder(), tr.getComment(), tr.getExpiration());
         try {
             APICommandFactory.executeTradeTransactionCommand(connector, ttInfoRecord);

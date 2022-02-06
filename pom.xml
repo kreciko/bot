@@ -26,20 +26,20 @@
 			<scope>test</scope>
 		</dependency>
         <dependency>
-            <groupId>xtb</groupId>
-            <artifactId>xtb.xAPIJavaWrapper</artifactId>
-            <version>2.5.0</version>
+            <groupId>pl.xtb</groupId>
+            <artifactId>xAPIJavaWrapper</artifactId>
+            <version>2.4.9</version>
         </dependency>
         <dependency>
-            <groupId>xtb</groupId>
-            <artifactId>xtb.json-simple</artifactId>
+            <groupId>pl.xtb</groupId>
+            <artifactId>json-simple</artifactId>
             <version>1.1.1</version>
         </dependency>
 
 		<dependency>
             <groupId>org.ta4j</groupId>
             <artifactId>ta4j-core</artifactId>
-            <version>0.13</version>
+            <version>0.15-SNAPSHOT</version>
         </dependency>
 
         <dependency>

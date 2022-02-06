@@ -3,14 +3,13 @@ package pl.kordek.forex.bot.strategy;
 import org.ta4j.core.*;
 import pl.kordek.forex.bot.constants.Configuration;
 import pl.kordek.forex.bot.rules.PriceActionRules;
-import pro.xstore.api.message.codes.TRADE_OPERATION_CODE;
 
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
 public abstract class StrategyBuilder {
-    public Order.OrderType orderType;
+    public Trade.TradeType tradeType;
     public int typeOfOperation;
     public Indicator stopLossStrategy;
 
@@ -37,9 +36,9 @@ public abstract class StrategyBuilder {
     public List<Strategy> getStrategyList(){
         ArrayList<Strategy> strategies = new ArrayList<>();
         strategies.add(buildMACDStrategy());
-//        strategies.add(buildIchimokuStrategy(series.getEndIndex()));
-        strategies.add(buildPriceActionStrategy());
-//        strategies.add(buildDonchianStrategy());
+        strategies.add(buildIchimokuStrategy(series.getEndIndex()));
+ //       strategies.add(buildPriceActionStrategy());
+        strategies.add(buildDonchianStrategy());
         return strategies;
     }
 

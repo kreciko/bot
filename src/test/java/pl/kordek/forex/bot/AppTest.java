@@ -1,7 +1,5 @@
 package pl.kordek.forex.bot;
 
-import java.util.HashMap;
-
 import org.ta4j.core.BaseTradingRecord;
 import org.ta4j.core.TradingRecord;
 
@@ -42,13 +40,13 @@ public class AppTest
         TradingRecord longTradingRecord = new BaseTradingRecord();
         longTradingRecord.enter(0);
         longTradingRecord.exit(2);
-        assertTrue(longTradingRecord.getCurrentTrade().isNew());
+        assertTrue(longTradingRecord.getCurrentPosition().isNew());
    //     assertTrue(longTradingRecord.getLastTrade().isClosed());
        // assertTrue(longTradingRecord.get);
         longTradingRecord.enter(4);
-        assertFalse(longTradingRecord.getCurrentTrade().isNew());
+        assertFalse(longTradingRecord.getCurrentPosition().isNew());
         
         longTradingRecord.exit(6);
-        assertTrue(longTradingRecord.getCurrentTrade().isNew());
+        assertTrue(longTradingRecord.getCurrentPosition().isNew());
     }
 }

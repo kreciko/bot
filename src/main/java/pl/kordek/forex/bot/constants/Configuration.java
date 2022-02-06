@@ -35,10 +35,8 @@ public interface Configuration {
 
 	String[] instrumentsFX = majorFX;
 
-    PERIOD_CODE candlePeriod = PERIOD_CODE.PERIOD_M5;
-    PERIOD_CODE parentCandlePeriod = PERIOD_CODE.PERIOD_M30;
-    Integer chartPeriodInHours = 24;
-    Double volume = 0.1;
+    PERIOD_CODE candlePeriod = PERIOD_CODE.PERIOD_M15;
+    PERIOD_CODE parentCandlePeriod = PERIOD_CODE.PERIOD_H1;
 
     String sinceDate = "2020/12/28 15:30:00";
     Date sinceDateDt = DateUtils.addDays(new Date(),-7);
@@ -46,11 +44,8 @@ public interface Configuration {
     //multiplicand of stoploss to estimate take profit
     Double takeProfitVsStopLossCoeff = 1.5;
 
-    Double stopLossMaxPrcFX = 0.2;
-    Double stopLossMaxPrcOthers = 0.5;
-    Boolean stopLossSetToLastCandle = false;
-    int stopLossMaxATR = 7;
-    int stopLossMinATR = 2;
+    int stopLossMaxATR = 0;
+    int stopLossMinATR = 0;
 
     Boolean updateStopLoss = true;
 
@@ -68,5 +63,5 @@ public interface Configuration {
 
     Boolean considerStratetyStrength = false;
 
-    Double minWinningRate = 0.42;
+    Double minWinningRate = 0.48;
 }

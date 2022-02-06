@@ -1,23 +1,23 @@
 package pl.kordek.forex.bot.domain;
 
 import org.ta4j.core.BaseBarSeries;
-import org.ta4j.core.Order;
+import org.ta4j.core.Trade;
 
 import java.math.BigDecimal;
 
 public class TradeInfo {
     String strategyName;
     BaseBarSeries series;
-    Order.OrderType orderType;
+    Trade.TradeType tradeType;
     BigDecimal stopLoss;
     BigDecimal takeProfit;
     Double volume;
 
-    public TradeInfo(BaseBarSeries series, Order.OrderType orderType, BigDecimal stopLoss,
+    public TradeInfo(BaseBarSeries series, Trade.TradeType tradeType, BigDecimal stopLoss,
                      BigDecimal takeProfit, Double volume, String strategyName) {
         this.strategyName = strategyName;
         this.series = series;
-        this.orderType = orderType;
+        this.tradeType = tradeType;
         this.stopLoss = stopLoss;
         this.takeProfit = takeProfit;
         this.volume = volume;
@@ -39,12 +39,12 @@ public class TradeInfo {
         this.series = series;
     }
 
-    public Order.OrderType getOrderType() {
-        return orderType;
+    public Trade.TradeType getTradeType() {
+        return tradeType;
     }
 
-    public void setOrderType(Order.OrderType orderType) {
-        this.orderType = orderType;
+    public void setTradeType(Trade.TradeType tradeType) {
+        this.tradeType = tradeType;
     }
 
     public BigDecimal getStopLoss() {

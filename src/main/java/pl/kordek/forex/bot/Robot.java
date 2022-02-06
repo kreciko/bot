@@ -1,13 +1,12 @@
 package pl.kordek.forex.bot;
 
 import org.ta4j.core.*;
-import org.ta4j.core.Order.OrderType;
-import org.ta4j.core.analysis.criteria.AverageProfitableTradesCriterion;
+import org.ta4j.core.Trade.TradeType;
 import org.ta4j.core.indicators.ATRIndicator;
 import org.ta4j.core.indicators.helpers.ClosePriceIndicator;
 import org.ta4j.core.indicators.helpers.DifferenceIndicator;
-import org.ta4j.core.indicators.helpers.MultiplierIndicator;
 import org.ta4j.core.indicators.helpers.SumIndicator;
+import org.ta4j.core.indicators.helpers.TransformIndicator;
 import org.ta4j.core.num.Num;
 import pl.kordek.forex.bot.api.XTBSymbolOperations;
 import pl.kordek.forex.bot.checker.PositionChecker;
@@ -16,8 +15,9 @@ import pl.kordek.forex.bot.domain.BlackListOperation;
 import pl.kordek.forex.bot.domain.RobotInfo;
 import pl.kordek.forex.bot.domain.TradeInfo;
 import pl.kordek.forex.bot.exceptions.XTBCommunicationException;
-import pl.kordek.forex.bot.indicator.DonchianIndicators;
-import pl.kordek.forex.bot.strategy.*;
+import pl.kordek.forex.bot.strategy.LongStrategyBuilder;
+import pl.kordek.forex.bot.strategy.ShortStrategyBuilder;
+import pl.kordek.forex.bot.strategy.StrategyBuilder;
 import pl.kordek.forex.bot.utils.VolumeAndSLOperations;
 import pro.xstore.api.message.records.TradeRecord;
 
@@ -70,8 +70,8 @@ public class Robot {
 
 			ATRIndicator atr = new ATRIndicator(series,14);
 
-			Indicator stopLossLongStrategy = new DifferenceIndicator(new ClosePriceIndicator(series), new MultiplierIndicator(atr, 5));
-			Indicator stopLossShortStrategy = new SumIndicator(new ClosePriceIndicator(series), new MultiplierIndicator(atr, 5));
+			Indicator stopLossLongStrategy = new DifferenceIndicator(new ClosePriceIndicator(series), TransformIndicator.multiply(atr, 2));
+			Indicator stopLossShortStrategy = new SumIndicator(new ClosePriceIndicator(series), TransformIndicator.multiply(atr, 2));
 
 			boolean longPos = checkForPositions(longTradingRecord, new LongStrategyBuilder(series, parentSeries, stopLossLongStrategy));
 			if(longPos)
@@ -85,11 +85,11 @@ public class Robot {
 	}
 
 	private boolean checkForPositions(TradingRecord tradingRecord, StrategyBuilder strategyBuilder) throws XTBCommunicationException {
-		OrderType orderType = strategyBuilder.orderType;
-		if(blackListOperation != null && blackListOperation.getTypeOfOperation() == orderType)
+		TradeType tradeType = strategyBuilder.tradeType;
+		if(blackListOperation != null && blackListOperation.getTypeOfOperation() == tradeType)
 			return false;
 		PositionChecker positionChecker = new PositionChecker(openedPositions);
-		boolean positionOpenedAndValid = positionChecker.isPositionOpenedAndOperationValid(currentSymbol, orderType);
+		boolean positionOpenedAndValid = positionChecker.isPositionOpenedAndOperationValid(currentSymbol, tradeType);
 
 		String strategyWithEntrySignal = getStrategyWithEntrySignal(series.getEndIndex(), tradingRecord,
 				strategyBuilder.getStrategyList(), winningRatioMap, currentSymbol);
@@ -106,8 +106,8 @@ public class Robot {
 		}
 		if(positionOpenedAndValid) {
 			TradeRecord currentSymbolTR = positionChecker.getOpenedPosition(currentSymbol);
-			if(volAndSLOperations.shouldUpdateStopLoss(currentSymbolTR, orderType))
-				api.updateStopLossXTB(currentSymbolTR, orderType);
+			if(volAndSLOperations.shouldUpdateStopLoss(currentSymbolTR, tradeType))
+				api.updateStopLossXTB(currentSymbolTR, tradeType);
 
 			if (!strategyWithExitSignal.isEmpty()) {
 				return positionChecker.exitPosition(api, series, tradingRecord, currentSymbolTR);
@@ -119,10 +119,10 @@ public class Robot {
 
 	private TradeInfo getEntryTradeInfo(StrategyBuilder strategyBuilder, String strategyWithEntrySignal)
 			throws XTBCommunicationException {
-		OrderType orderType = strategyBuilder.orderType.complementType();
-		BigDecimal stopLoss = volAndSLOperations.calculateStopLoss(orderType, strategyBuilder.stopLossStrategy, series);
-		BigDecimal takeProfit = volAndSLOperations.calculateTakeProfit(orderType, stopLoss);
-		System.out.println(new Date() + ": "+orderType + " strategy should ENTER on " + currentSymbol
+		TradeType tradeType = strategyBuilder.tradeType.complementType();
+		BigDecimal stopLoss = volAndSLOperations.calculateStopLoss(tradeType, strategyBuilder.stopLossStrategy, series);
+		BigDecimal takeProfit = volAndSLOperations.calculateTakeProfit(tradeType, stopLoss);
+		System.out.println(new Date() + ": "+tradeType + " strategy should ENTER on " + currentSymbol
 				+ ". Bar close price "+series.getLastBar().getClosePrice() + ". Stop Loss: "+stopLoss.doubleValue()+ " Take Profit: " + takeProfit.doubleValue());
 
 		Double volume = volAndSLOperations.getOptimalVolume(currentSymbol, strategyBuilder.assessStrategyStrength());
@@ -131,7 +131,7 @@ public class Robot {
 			return null;
 		}
 
-		return new TradeInfo(series, orderType, stopLoss, takeProfit, volume, strategyWithEntrySignal);
+		return new TradeInfo(series, tradeType, stopLoss, takeProfit, volume, strategyWithEntrySignal);
 	}
 
 
@@ -139,8 +139,10 @@ public class Robot {
 	private String getStrategyWithEntrySignal(int endIndex, TradingRecord tradingRecord, List<Strategy> baseStrategies,
 											 HashMap<String, HashMap<String, BigDecimal>> winningRatioMap, String symbol) {
 		for(Strategy strategy : baseStrategies) {
+			HashMap<String, BigDecimal> winRatioStrategyMap = winningRatioMap.get(strategy.getName());
 			if(strategy.shouldEnter(endIndex, tradingRecord)
-					&& winningRatioMap.get(strategy.getName()).get(symbol).compareTo(BigDecimal.valueOf(Configuration.minWinningRate)) > 0)
+					&& winRatioStrategyMap.containsKey(symbol)
+					&& winRatioStrategyMap.get(symbol).compareTo(BigDecimal.valueOf(Configuration.minWinningRate)) > 0)
 			{
 				System.out.println(new Date() + ": "+strategy.getName()+" strategy signal for a symbol with winning ratio: "+winningRatioMap.get(strategy.getName()).get(symbol) +" - "+symbol);
 				return strategy.getName();
@@ -167,16 +169,16 @@ public class Robot {
 		Num profitableTradesShortRatio;
 
 		for(Strategy strat : strategies) {
-			List<Trade> filteredLongTrades = longTradingRecord.getTrades().stream()
+			List<Position> filteredLongTrades = longTradingRecord.getPositions().stream()
 					.filter(e -> e.getStrategyName().equals(strat.getName()))
 					.collect(Collectors.toList());
-			List<Trade> filteredShortTrades = shortTradingRecord.getTrades().stream()
+			List<Position> filteredShortTrades = shortTradingRecord.getPositions().stream()
 					.filter(e -> e.getStrategyName().equals(strat.getName()))
 					.collect(Collectors.toList());
 			tradingRecordForLongStrategy = new BaseTradingRecord(filteredLongTrades.toArray(new Trade[0]));
 			tradingRecordForShortStrategy = new BaseTradingRecord(filteredShortTrades.toArray(new Trade[0]));
-			profitableTradesLongRatio = new AverageProfitableTradesCriterion().calculate(series, tradingRecordForLongStrategy);
-			profitableTradesShortRatio = new AverageProfitableTradesCriterion().calculate(series, tradingRecordForShortStrategy);
+//			profitableTradesLongRatio = new AverageProfitableTradesCriterion().calculate(series, tradingRecordForLongStrategy);
+//			profitableTradesShortRatio = new AverageProfitableTradesCriterion().calculate(series, tradingRecordForShortStrategy);
 
 		}
 	}

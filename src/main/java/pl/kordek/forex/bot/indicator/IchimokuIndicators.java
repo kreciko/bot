@@ -15,9 +15,9 @@ public class IchimokuIndicators extends GeneralIndicators{
         super(series, parentSeries);
         tenkanSen = new IchimokuTenkanSenIndicator(series, 9);
         kijunSen = new IchimokuKijunSenIndicator(series, 26);
-        senkouSpanA = new IchimokuSenkouSpanAIndicator(series, tenkanSen, kijunSen);
-        senkouSpanB = new IchimokuSenkouSpanBIndicator(series, 52);
-        chikouSpan = new IchimokuChikouSpanIndicator(series, 26);
+        senkouSpanA = new IchimokuSenkouSpanAIndicator(series);
+        senkouSpanB = new IchimokuSenkouSpanBIndicator(series);
+        chikouSpan = new IchimokuChikouSpanIndicator(series);
     }
 
     public IchimokuTenkanSenIndicator getTenkanSen() {

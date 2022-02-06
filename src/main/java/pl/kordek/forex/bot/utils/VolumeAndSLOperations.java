@@ -2,13 +2,10 @@ package pl.kordek.forex.bot.utils;
 
 import org.ta4j.core.BaseBarSeries;
 import org.ta4j.core.Indicator;
-import org.ta4j.core.Order.OrderType;
-import org.ta4j.core.Strategy;
-import org.ta4j.core.TradingRecord;
-import org.ta4j.core.indicators.ATRIndicator;
+import org.ta4j.core.Trade.TradeType;
 import org.ta4j.core.indicators.donchian.DonchianChannelLowerIndicator;
 import org.ta4j.core.indicators.donchian.DonchianChannelUpperIndicator;
-import org.ta4j.core.indicators.helpers.*;
+import org.ta4j.core.indicators.helpers.StopLossIndicator;
 import org.ta4j.core.num.Num;
 import pl.kordek.forex.bot.api.XTBSymbolOperations;
 import pl.kordek.forex.bot.constants.Configuration;
@@ -19,8 +16,6 @@ import pro.xstore.api.message.records.TradeRecord;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
 
 public class VolumeAndSLOperations {
 	private final int TYPE_OF_OPERATION_BUY = 0;
@@ -36,15 +31,15 @@ public class VolumeAndSLOperations {
 	}
 
 	//------------------- SL AND TP CALCULATION ---------------
-	public BigDecimal calculateStopLoss(OrderType orderType, Indicator stopLossStrategy, BaseBarSeries series){
+	public BigDecimal calculateStopLoss(TradeType tradeType, Indicator stopLossStrategy, BaseBarSeries series){
 		BigDecimal spread = BigDecimal.valueOf(symbolRecord.getSpreadRaw());
 		Indicator<Num> stopLossInd =
-				 new StopLossIndicator(stopLossStrategy, series, orderType);
+				 new StopLossIndicator(stopLossStrategy, series, tradeType);
 
         int precisionNumber = symbolRecord.getPrecision();
 
         BigDecimal stopLoss = BigDecimal.valueOf(stopLossInd.getValue(series.getEndIndex()).doubleValue()).setScale(precisionNumber, RoundingMode.HALF_UP);
-        if(stopLoss.doubleValue() != 0 && orderType == OrderType.SELL) {
+        if(stopLoss.doubleValue() != 0 && tradeType == TradeType.SELL) {
         	stopLoss = stopLoss.add(spread);
         }
 
@@ -52,7 +47,7 @@ public class VolumeAndSLOperations {
     }
 
 
-	public BigDecimal calculateTakeProfit(OrderType orderType, BigDecimal stopLoss){
+	public BigDecimal calculateTakeProfit(TradeType tradeType, BigDecimal stopLoss){
 		BigDecimal takeProfitVsStopLossCoeffBD = BigDecimal.valueOf(Configuration.takeProfitVsStopLossCoeff);
 
 		Integer precisionNumber = symbolRecord.getPrecision();
@@ -65,34 +60,34 @@ public class VolumeAndSLOperations {
         BigDecimal buyTP = BigDecimal.valueOf(symbolRecord.getAsk())
         		.add(BigDecimal.valueOf(symbolRecord.getAsk()).subtract(stopLoss).multiply(takeProfitVsStopLossCoeffBD))
         		.setScale(precisionNumber, RoundingMode.HALF_UP);
-		return orderType == OrderType.BUY ? buyTP : sellTP;
+		return tradeType == TradeType.BUY ? buyTP : sellTP;
     }
 
 
 
-	public boolean shouldUpdateStopLoss(TradeRecord xtbTR, OrderType orderType){
+	public boolean shouldUpdateStopLoss(TradeRecord xtbTR, TradeType tradeType){
 		if(!Configuration.updateStopLoss) {
 			return false;
 		}
-		if (xtbTR == null || isTrOperationInvalid(orderType, xtbTR.getCmd()))
+		if (xtbTR == null || isTrOperationInvalid(tradeType, xtbTR.getCmd()))
 			return false;
 
 		if(!shouldUpdateStopLoss(
 				BigDecimal.valueOf(xtbTR.getSl()),
 				BigDecimal.valueOf(xtbTR.getTp()),
-				orderType)){
+				tradeType)){
 			return false;
 		}
 
 		return true;
 	}
 
-	private boolean isTrOperationInvalid(OrderType orderType, int existingOperationCode){
-		return (existingOperationCode == TYPE_OF_OPERATION_SELL && orderType  == OrderType.BUY)
-				|| (existingOperationCode == TYPE_OF_OPERATION_BUY && orderType == OrderType.SELL);
+	private boolean isTrOperationInvalid(TradeType tradeType, int existingOperationCode){
+		return (existingOperationCode == TYPE_OF_OPERATION_SELL && tradeType  == TradeType.BUY)
+				|| (existingOperationCode == TYPE_OF_OPERATION_BUY && tradeType == TradeType.SELL);
 	}
 
-	private boolean shouldUpdateStopLoss(BigDecimal stopLossPrice, BigDecimal takeProfitPrice, OrderType orderType) {
+	private boolean shouldUpdateStopLoss(BigDecimal stopLossPrice, BigDecimal takeProfitPrice, TradeType tradeType) {
 		BigDecimal stopLossMinusBid = stopLossPrice.subtract(BigDecimal.valueOf(symbolRecord.getBid())).abs();
 		BigDecimal takeProfitMinusBid = takeProfitPrice.subtract(BigDecimal.valueOf(symbolRecord.getBid())).abs();
 
@@ -100,7 +95,7 @@ public class VolumeAndSLOperations {
 		BigDecimal takeProfitMinusAsk = takeProfitPrice.subtract(BigDecimal.valueOf(symbolRecord.getAsk())).abs();
 
 
-		if(orderType == OrderType.SELL) {
+		if(tradeType == TradeType.SELL) {
 			return enoughProfitForSLChange(stopLossMinusAsk, takeProfitMinusAsk);
 		}
 		else {

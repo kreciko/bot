@@ -1,7 +1,6 @@
 package pl.kordek.forex.bot.indicator;
 
 import org.ta4j.core.BarSeries;
-import org.ta4j.core.indicators.candles.*;
 import org.ta4j.core.indicators.helpers.DifferenceIndicator;
 import org.ta4j.core.indicators.helpers.SatisfiedCountIndicator;
 import org.ta4j.core.indicators.helpers.SumIndicator;

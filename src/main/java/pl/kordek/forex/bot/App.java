@@ -123,7 +123,7 @@ public class App {
 		}
 
 		//check if trading record has a trade that is opened (not new), but it's not existing in XTB
-		if(!tradingRecord.getCurrentTrade().isNew()
+		if(!tradingRecord.getCurrentPosition().isNew()
 				&& !openedPositionsList.stream().map(e -> e.getSymbol()).anyMatch(e -> e.equals(symbol))) {
 			System.out.println(new Date() + ": Trade record was outdated for symbol "+symbol+". Updating the trading record");
 			boolean exited = tradingRecord.exit(endIndex);

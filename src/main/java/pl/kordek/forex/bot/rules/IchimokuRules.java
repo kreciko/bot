@@ -1,27 +1,14 @@
 package pl.kordek.forex.bot.rules;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
-import java.util.HashMap;
-import java.util.Map;
-
 import org.ta4j.core.BaseBarSeries;
-import org.ta4j.core.Indicator;
 import org.ta4j.core.Rule;
 import org.ta4j.core.indicators.helpers.ClosePriceIndicator;
 import org.ta4j.core.indicators.helpers.ConstantIndicator;
-import org.ta4j.core.indicators.helpers.PreviousValueIndicator;
-import org.ta4j.core.indicators.ichimoku.IchimokuChikouSpanIndicator;
-import org.ta4j.core.indicators.ichimoku.IchimokuKijunSenIndicator;
-import org.ta4j.core.indicators.ichimoku.IchimokuSenkouSpanAIndicator;
-import org.ta4j.core.indicators.ichimoku.IchimokuSenkouSpanBIndicator;
 import org.ta4j.core.indicators.ichimoku.IchimokuTenkanSenIndicator;
-import org.ta4j.core.num.Num;
-import org.ta4j.core.trading.rules.BooleanRule;
-import org.ta4j.core.trading.rules.CrossedDownIndicatorRule;
-import org.ta4j.core.trading.rules.CrossedUpIndicatorRule;
-import org.ta4j.core.trading.rules.OverIndicatorRule;
-import org.ta4j.core.trading.rules.UnderIndicatorRule;
+import org.ta4j.core.rules.CrossedDownIndicatorRule;
+import org.ta4j.core.rules.CrossedUpIndicatorRule;
+import org.ta4j.core.rules.OverIndicatorRule;
+import org.ta4j.core.rules.UnderIndicatorRule;
 import pl.kordek.forex.bot.indicator.IchimokuIndicators;
 
 public class IchimokuRules {

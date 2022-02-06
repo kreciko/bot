@@ -2,7 +2,7 @@ package pl.kordek.forex.bot.utils;
 
 import com.opencsv.CSVReader;
 import org.ta4j.core.BaseTradingRecord;
-import org.ta4j.core.Order;
+import org.ta4j.core.Trade;
 import org.ta4j.core.TradingRecord;
 import pl.kordek.forex.bot.Robot;
 import pl.kordek.forex.bot.constants.Configuration;
@@ -42,7 +42,7 @@ public class InitOperations {
             HashMap<String, TradingRecord> shortTradingRecordsMap = new HashMap<>();
             for (String symbol : Configuration.instrumentsFX) {
                 longTradingRecordsMap.put(symbol, new BaseTradingRecord());
-                shortTradingRecordsMap.put(symbol, new BaseTradingRecord(Order.OrderType.SELL));
+                shortTradingRecordsMap.put(symbol, new BaseTradingRecord(Trade.TradeType.SELL));
                 System.out.println("Init trading record for " + symbol);
             }
 

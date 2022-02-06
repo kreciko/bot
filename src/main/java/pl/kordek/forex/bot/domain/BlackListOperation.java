@@ -1,6 +1,6 @@
 package pl.kordek.forex.bot.domain;
 
-import org.ta4j.core.Order;
+import org.ta4j.core.Trade;
 
 import java.io.Serializable;
 
@@ -12,12 +12,12 @@ public class BlackListOperation implements Serializable{
 
 	
 	private String instrument;
-	private Order.OrderType typeOfOperation;
+	private Trade.TradeType typeOfOperation;
 	private long closeTime;
 	public BlackListOperation(String instrument, int typeOfOperation, long closeTime) {
 		super();
 		this.instrument = instrument;
-		this.typeOfOperation = typeOfOperation  == 0 ? Order.OrderType.BUY : Order.OrderType.SELL;
+		this.typeOfOperation = typeOfOperation  == 0 ? Trade.TradeType.BUY : Trade.TradeType.SELL;
 		this.closeTime = closeTime;
 	}
 	public String getInstrument() {
@@ -27,10 +27,10 @@ public class BlackListOperation implements Serializable{
 		this.instrument = instrument;
 	}
 
-	public Order.OrderType getTypeOfOperation() {
+	public Trade.TradeType getTypeOfOperation() {
 		return typeOfOperation;
 	}
-	public void setTypeOfOperation(Order.OrderType typeOfOperation) {
+	public void setTypeOfOperation(Trade.TradeType typeOfOperation) {
 		this.typeOfOperation = typeOfOperation;
 	}
 	public long getCloseTime() {

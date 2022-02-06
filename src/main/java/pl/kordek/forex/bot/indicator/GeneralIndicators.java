@@ -1,7 +1,6 @@
 package pl.kordek.forex.bot.indicator;
 
 import org.ta4j.core.BarSeries;
-import org.ta4j.core.Order;
 import org.ta4j.core.indicators.EMAIndicator;
 import org.ta4j.core.indicators.EMASmartIndicator;
 import org.ta4j.core.indicators.helpers.ClosePriceIndicator;
@@ -9,6 +8,7 @@ import org.ta4j.core.indicators.helpers.ParentIndicator;
 import org.ta4j.core.indicators.helpers.PreviousValueIndicator;
 import org.ta4j.core.indicators.helpers.StopLossIndicator;
 import org.ta4j.core.num.Num;
+import pl.kordek.forex.bot.constants.Configuration;
 
 public class GeneralIndicators {
     protected BarSeries series;
@@ -17,7 +17,8 @@ public class GeneralIndicators {
     protected EMAIndicator trendLine200;
     protected EMASmartIndicator smartTrendLine50;
     protected EMASmartIndicator smartTrendLine200;
-    protected ParentIndicator parentTrendLine50;
+    protected ParentIndicator parentTrendLine200;
+    protected ParentIndicator smartParentTrendLine200;
     protected ParentIndicator smartParentTrendLine50;
     //private StopLossIndicator slIndicator;
 
@@ -28,11 +29,14 @@ public class GeneralIndicators {
         this.smartTrendLine50 = new EMASmartIndicator(closePrice, 50);
         this.smartTrendLine200 = new EMASmartIndicator(closePrice, 200);
         ClosePriceIndicator parentClosePrice = new ClosePriceIndicator(parentSeries);
+
+        Long parentScaleL = (Configuration.parentCandlePeriod.getCode()/Configuration.candlePeriod.getCode());
+        this.smartParentTrendLine200 =
+                new ParentIndicator(new EMASmartIndicator(parentClosePrice, 200), parentScaleL.intValue());
+        this.parentTrendLine200 =
+                new ParentIndicator(new EMAIndicator(parentClosePrice, 50), parentScaleL.intValue());
         this.smartParentTrendLine50 =
-                new ParentIndicator(new EMASmartIndicator(parentClosePrice, 50), 6);
-        this.parentTrendLine50 =
-                new ParentIndicator(new EMAIndicator(parentClosePrice, 50), 6);
-        //this.slIndicator = new StopLossIndicator(donchianLower, series, OrderType.BUY, 5, 2);
+                new ParentIndicator(new EMASmartIndicator(parentClosePrice, 50), parentScaleL.intValue());
     }
 
     public ClosePriceIndicator getClosePrice() {
@@ -55,11 +59,15 @@ public class GeneralIndicators {
         return smartTrendLine200;
     }
 
+    public ParentIndicator getSmartParentTrendLine200() {
+        return smartParentTrendLine200;
+    }
+
     public ParentIndicator getSmartParentTrendLine50() {
         return smartParentTrendLine50;
     }
 
-    public ParentIndicator getParentTrendLine50() {
-        return parentTrendLine50;
+    public ParentIndicator getParentTrendLine200() {
+        return parentTrendLine200;
     }
 }

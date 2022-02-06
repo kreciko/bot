@@ -1,11 +1,11 @@
 package pl.kordek.forex.bot.strategy;
 
 import org.ta4j.core.*;
-import org.ta4j.core.Order.OrderType;
+import org.ta4j.core.Trade.TradeType;
 import org.ta4j.core.indicators.helpers.SatisfiedCountIndicator;
 import org.ta4j.core.indicators.helpers.StopLossIndicator;
 import org.ta4j.core.num.DoubleNum;
-import org.ta4j.core.trading.rules.*;
+import org.ta4j.core.rules.*;
 import pl.kordek.forex.bot.constants.Configuration;
 import pl.kordek.forex.bot.indicator.DonchianIndicators;
 import pl.kordek.forex.bot.indicator.GeneralIndicators;
@@ -21,23 +21,23 @@ public class ShortStrategyBuilder extends StrategyBuilder {
     public ShortStrategyBuilder(BaseBarSeries series, BaseBarSeries parentSeries, Indicator stopLossStrategy) {
         super(series,parentSeries);
 
-        this.orderType = OrderType.SELL;
+        this.tradeType = TradeType.SELL;
         this.typeOfOperation = 0;
         this.stopLossStrategy = stopLossStrategy;
 
         this.stopLossNotExceedingBounds = new IsEqualRule(
-                new StopLossIndicator(stopLossStrategy, series, Order.OrderType.SELL, Configuration.stopLossMaxATR, Configuration.stopLossMinATR), DoubleNum.valueOf(0)).negation();
+                new StopLossIndicator(stopLossStrategy, series, Trade.TradeType.SELL, Configuration.stopLossMaxATR, Configuration.stopLossMinATR), DoubleNum.valueOf(0)).negation();
         this.shortSignalsPrevail = priceActionRules.getShortSignalsPrevailRule(1);
     }
 
     @Override
     public Strategy buildMACDStrategy() {
         MACDIndicators macdInd = new MACDIndicators(series, parentSeries);
-        Rule macdEntry = new UnderIndicatorRule(macdInd.getClosePrice(), macdInd.getTrendLine200())
+        Rule macdEntry = new UnderIndicatorRule(macdInd.getClosePrice(), macdInd.getSmartTrendLine200())
+                .and(new UnderIndicatorRule(macdInd.getClosePrice(), macdInd.getSmartParentTrendLine50()))
                 .and(new CrossedDownIndicatorRule(macdInd.getMacd(), macdInd.getSignal()))
                 .and(new OverIndicatorRule(macdInd.getMacd(), DoubleNum.valueOf(0)))
-                .and(shortSignalsPrevail)
-                .and(priceActionRules.getMarketNotChoppy())
+                .and(priceActionRules.getPriceActionNotTooDynamic())
                 .and(stopLossNotExceedingBounds);
         return new BaseStrategy("MACD", macdEntry, new BooleanRule(false));
     }
@@ -69,11 +69,10 @@ public class ShortStrategyBuilder extends StrategyBuilder {
                 new SatisfiedCountIndicator(donchianInd.getIsUpperDRising(), donchianInd.getLowerDRisingCount()), 0);
 
         Rule donchianEntry = new UnderIndicatorRule(donchianInd.getClosePrice(), donchianInd.getSmartTrendLine200())
+                .and(new UnderIndicatorRule(donchianInd.getClosePrice(), donchianInd.getSmartParentTrendLine200()))
                 .and(new BooleanIndicatorRule(donchianInd.getWasLowerDRising()))
                 .and(new BooleanIndicatorRule(donchianInd.getIsLowerDFalling()))
                 .and(wasUpperDRisingInTheMeantime)
-                .and(shortSignalsPrevail)
-                .and(priceActionRules.getPriceActionNotTooDynamic())
                 .and(stopLossNotExceedingBounds);
 
         return new BaseStrategy("Donchian", donchianEntry , new BooleanRule(false));
