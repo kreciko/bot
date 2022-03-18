@@ -15,6 +15,7 @@ import org.ta4j.core.indicators.ATRIndicator;
 import pl.kordek.forex.bot.api.XTBOperations;
 import pl.kordek.forex.bot.api.XTBSymbolOperations;
 import pl.kordek.forex.bot.constants.Configuration;
+import pl.kordek.forex.bot.domain.BackTestInfo;
 import pl.kordek.forex.bot.domain.RobotInfo;
 import pl.kordek.forex.bot.exceptions.SerializationFailedException;
 import pl.kordek.forex.bot.exceptions.XTBCommunicationException;
@@ -39,7 +40,7 @@ public class App {
 
 	private static List<String> spreadTooLargeSymbols = new ArrayList<>();
 
-	private static HashMap<String, HashMap<String, BigDecimal>> winningRatioMap = null;
+	private static HashMap<String, HashMap<String, BackTestInfo>> winningRatioMap = null;
 
 	private static RobotInfo robotInfo;
 
@@ -72,9 +73,9 @@ public class App {
 				boolean exitedShort = exitIfNeeded(endIndex, symbol, robotInfo.getShortTradingRecordMap().get(symbol), openedPositions);
 				boolean exited = exitedLong || exitedShort;
 
-				runTestsIfNeeded(symbol);
+				runTestsIfNeeded(symbol, connector);
 				//skip symbol, too wide spread or updated trade record
-				if(!checkTradePossible(exited, isSpreadAcceptable(symbolApi.getSr()))) {
+				if(!checkTradePossible(exited, isSpreadAcceptable(symbolApi.getSr()), symbol)) {
 					continue;
 				}
 
@@ -127,7 +128,6 @@ public class App {
 				&& !openedPositionsList.stream().map(e -> e.getSymbol()).anyMatch(e -> e.equals(symbol))) {
 			System.out.println(new Date() + ": Trade record was outdated for symbol "+symbol+". Updating the trading record");
 			boolean exited = tradingRecord.exit(endIndex);
-
 			if(!exited) {
 				System.out.println(new Date() + ": Exit not successful");
 			}
@@ -136,15 +136,15 @@ public class App {
 		return false;
 	}
 
-	private static void runTestsIfNeeded(String currentSymbol){
+	private static void runTestsIfNeeded(String currentSymbol, SyncAPIConnector connector){
 		if(Configuration.runTest && Configuration.runTestFX.equals(currentSymbol)){
-			StrategyTester tester = new StrategyTester(series, parentSeries);
+			StrategyTester tester = new StrategyTester(series, parentSeries, connector);
 			tester.strategyTest(series.getEndIndex()-Configuration.testedIndex, currentSymbol);
 		}
 	}
 
-	private static boolean checkTradePossible(boolean exited, boolean isSpreadAcceptable){
-		return !exited && isSpreadAcceptable && !Configuration.runTest;
+	private static boolean checkTradePossible(boolean exited, boolean isSpreadAcceptable, String symbol){
+		return !exited && isSpreadAcceptable && !Configuration.runTest && winningRatioMap.get("MACD").containsKey(symbol);
 	}
 
 	private static boolean isSpreadAcceptable(SymbolResponse sr) {

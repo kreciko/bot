@@ -1,6 +1,7 @@
 package pl.kordek.forex.bot.rules;
 
 import org.ta4j.core.BaseBarSeries;
+import org.ta4j.core.Indicator;
 import org.ta4j.core.Rule;
 import org.ta4j.core.indicators.ATRIndicator;
 import org.ta4j.core.indicators.EMAIndicator;
@@ -10,13 +11,7 @@ import org.ta4j.core.indicators.candles.BullishPinBarIndicator;
 import org.ta4j.core.indicators.candles.BullishShrinkingCandlesIndicator;
 import org.ta4j.core.indicators.helpers.*;
 import org.ta4j.core.num.DoubleNum;
-import org.ta4j.core.rules.BooleanIndicatorRule;
-import org.ta4j.core.rules.CrossedDownIndicatorRule;
-import org.ta4j.core.rules.CrossedUpIndicatorRule;
-import org.ta4j.core.rules.IsFallingRule;
-import org.ta4j.core.rules.IsRisingRule;
-import org.ta4j.core.rules.OverIndicatorRule;
-import org.ta4j.core.rules.UnderIndicatorRule;
+import org.ta4j.core.rules.*;
 import pl.kordek.forex.bot.indicator.SatisfiedPriceActionIndicators;
 
 public class PriceActionRules {
@@ -40,9 +35,11 @@ public class PriceActionRules {
 	private Rule marketNotChoppy;
 
 
-
-	public PriceActionRules(BaseBarSeries series, BaseBarSeries parentSeries) {
-		satisfiedPriceActionIndicators = new SatisfiedPriceActionIndicators(series,parentSeries);
+	public PriceActionRules(BaseBarSeries series, BaseBarSeries parentSeries){
+		this(series, parentSeries,7);
+	}
+	public PriceActionRules(BaseBarSeries series, BaseBarSeries parentSeries, int scannedBarCount) {
+		satisfiedPriceActionIndicators = new SatisfiedPriceActionIndicators(series,parentSeries,scannedBarCount);
 
 		ClosePriceIndicator closePrice = satisfiedPriceActionIndicators.getClosePrice();
 
@@ -64,7 +61,13 @@ public class PriceActionRules {
 
 		ATRIndicator atr = new ATRIndicator(series,14);
 		EMAIndicator atrAverage = new EMAIndicator(atr, 50);
-		priceActionNotTooDynamic = new UnderIndicatorRule(atr, TransformIndicator.multiply(atrAverage, 1.5));
+		HighestValueIndicator highestAtr = new HighestValueIndicator(atr, 1000);
+		LowestValueIndicator lowestAtr = new LowestValueIndicator(atr, 1000);
+		Indicator atrDiff = TransformIndicator.multiply(new DifferenceIndicator(highestAtr,lowestAtr), 0.2);
+		Indicator highestTradableAtr = new DifferenceIndicator(highestAtr, atrDiff);
+		Indicator lowestTradableAtr = new SumIndicator(lowestAtr, atrDiff);
+
+		priceActionNotTooDynamic = new InPipeRule(atr, highestTradableAtr,lowestTradableAtr);
 
 		marketNotChoppy = new OverIndicatorRule(satisfiedPriceActionIndicators.getChoppyMarketIndicator(), 2);
 		createCustomPriceActionRules();
@@ -159,7 +162,7 @@ public class PriceActionRules {
 	}
 
 	public SumIndicator getShortEntrySignals() {
-		return satisfiedPriceActionIndicators.getLongEntrySignals();
+		return satisfiedPriceActionIndicators.getShortEntrySignals();
 	}
 
 	public Rule getPriceActionNotTooDynamic() {

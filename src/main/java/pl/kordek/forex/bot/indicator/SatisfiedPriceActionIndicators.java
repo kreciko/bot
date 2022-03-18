@@ -6,8 +6,6 @@ import org.ta4j.core.indicators.helpers.SatisfiedCountIndicator;
 import org.ta4j.core.indicators.helpers.SumIndicator;
 
 public class SatisfiedPriceActionIndicators extends PriceActionIndicators{
-    private final int scannedBarCount = 7;
-
     private SatisfiedCountIndicator satisfiedBullishPinbars;
     private SatisfiedCountIndicator satisfiedBearishPinbars;
 
@@ -27,9 +25,9 @@ public class SatisfiedPriceActionIndicators extends PriceActionIndicators{
 
 
 
-    public SatisfiedPriceActionIndicators(BarSeries series, BarSeries parentSeries) {
-        super(series, parentSeries);
 
+    public SatisfiedPriceActionIndicators(BarSeries series, BarSeries parentSeries, int scannedBarCount) {
+        super(series, parentSeries);
 
         satisfiedBullishPinbars = new SatisfiedCountIndicator(bullishPinBarIndicator, scannedBarCount);
         satisfiedBearishPinbars = new SatisfiedCountIndicator(bearishPinBarIndicator, scannedBarCount);
@@ -43,8 +41,8 @@ public class SatisfiedPriceActionIndicators extends PriceActionIndicators{
         satisfiedBullishShrinkingCandles = new SatisfiedCountIndicator(bullishShrinkingCandlesIndicator , scannedBarCount);
         satisfiedBearishShrinkingCandles = new SatisfiedCountIndicator(bearishShrinkingCandlesIndicator, scannedBarCount);
 
-        longEntrySignals = new SumIndicator(satisfiedBullishPinbars, satisfiedBullishEngulfing, satisfiedBullishHarami, satisfiedBearishShrinkingCandles);
-        shortEntrySignals = new SumIndicator(satisfiedBearishPinbars, satisfiedBearishEngulfing, satisfiedBearishHarami, satisfiedBullishShrinkingCandles);
+        longEntrySignals = new SumIndicator(satisfiedBullishEngulfing, satisfiedBullishHarami, satisfiedBearishShrinkingCandles);
+        shortEntrySignals = new SumIndicator(satisfiedBearishEngulfing, satisfiedBearishHarami, satisfiedBullishShrinkingCandles);
 
         longMinusShortSignals = new DifferenceIndicator(longEntrySignals, shortEntrySignals);
         shortMinusLongSignals = new DifferenceIndicator(shortEntrySignals, longEntrySignals);

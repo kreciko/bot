@@ -1,6 +1,7 @@
 package pl.kordek.forex.bot.api;
 
 import org.ta4j.core.Trade.TradeType;
+import pl.kordek.forex.bot.constants.Configuration;
 import pl.kordek.forex.bot.exceptions.XTBCommunicationException;
 import pro.xstore.api.message.codes.PERIOD_CODE;
 import pro.xstore.api.message.codes.TRADE_TRANSACTION_TYPE;
@@ -38,7 +39,7 @@ public class XTBSymbolOperations extends XTBOperations{
             Thread.sleep(250);
         } catch (APICommandConstructionException | APIReplyParseException | APICommunicationException
                 | APIErrorResponse | InterruptedException e1) {
-            System.out.println(new Date() + ": Failed to open in XTB" + symbolRecord.getSymbol());
+            System.out.println(new Date() + ": Failed to open in XTB " + symbolRecord.getSymbol());
             throw new XTBCommunicationException("Couldn't open the position in XTB due to communication problems: "+symbolRecord.getSymbol());
         }
     }
@@ -52,7 +53,7 @@ public class XTBSymbolOperations extends XTBOperations{
         try {
             marginLevelResponse = APICommandFactory.executeMarginLevelCommand(connector);
             BigDecimal balance = BigDecimal.valueOf(marginLevelResponse.getBalance());
-            BigDecimal balancePerTrade = balance.divide(BigDecimal.valueOf(5L), 2, RoundingMode.HALF_UP);
+            BigDecimal balancePerTrade = balance.divide(BigDecimal.valueOf(Configuration.maxNumberOfPositionsOpen), 2, RoundingMode.HALF_UP);
 
             MarginTradeResponse marginTradeResponse = APICommandFactory.executeMarginTradeCommand(connector, sr.getSymbol().getSymbol(), optimalVolume.doubleValue());
             BigDecimal marginRatio = balancePerTrade.divide(BigDecimal.valueOf(marginTradeResponse.getMargin()) , 2, RoundingMode.HALF_UP);
@@ -71,13 +72,11 @@ public class XTBSymbolOperations extends XTBOperations{
         }
     }
 
-    private Double getMarginNeeded(Double volume) throws XTBCommunicationException {
+    private Double getMarginNeeded(Double volume) throws APIErrorResponse, APICommunicationException, APIReplyParseException, APICommandConstructionException, InterruptedException {
         MarginTradeResponse marginTradeResponse;
-        try{
-            marginTradeResponse = APICommandFactory.executeMarginTradeCommand(connector, sr.getSymbol().getSymbol(), volume);
-        } catch (APICommandConstructionException | APIReplyParseException | APICommunicationException | APIErrorResponse e) {
-            throw new XTBCommunicationException("Couldn't retrieve margins in XTB due to communication problems: "+sr.getSymbol().getSymbol());
-        }
+        marginTradeResponse = APICommandFactory.executeMarginTradeCommand(connector, sr.getSymbol().getSymbol(), volume);
+        Thread.sleep(250);
+
         return marginTradeResponse.getMargin();
     }
 
@@ -102,7 +101,7 @@ public class XTBSymbolOperations extends XTBOperations{
             marginFree = getMarginFree();
             marginNeeded = getMarginNeeded(volume);
         } catch (APICommandConstructionException | APIReplyParseException | APICommunicationException
-                | APIErrorResponse e) {
+                | APIErrorResponse | InterruptedException e) {
             throw new XTBCommunicationException("Couldn't execute is enough margin check");
         }
 

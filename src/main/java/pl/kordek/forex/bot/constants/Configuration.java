@@ -11,7 +11,7 @@ import org.apache.commons.lang3.time.DateUtils;
 public interface Configuration {
 	ServerEnum server = ServerEnum.DEMO;
 
-	int waitingTime = 60000;
+	int waitingTime = 120000;
 
     String realUsrName = "1426627";
     String realPassword = "youw1nKordian!";
@@ -22,9 +22,9 @@ public interface Configuration {
 	String username = demoUsrName;
 	String password = demoPassword;
 
-	String[] oneFX = {"EURUSD"};
+	String[] oneFX = {"USDCHF"};
 
-	String[] customFX = {"EURUSD", "USDCHF"};
+	String[] customFX = {"EURUSD", "USDCHF", "NZDUSD", "AUDUSD", "USDJPY", "USDCAD", "GBPCHF", "EURGBP"};
 	String[] halfMajorFX = {"AUDUSD","EURGBP","EURJPY","EURUSD","GBPCHF","GBPJPY"} ;
 	String[] majorFX = {"AUDUSD","EURCHF","EURGBP","EURJPY","EURUSD","GBPCHF","GBPJPY","GBPUSD","NZDUSD", "USDCHF","USDJPY", "USDCAD"};
 	String[] allFX = {"AUDUSD","EURGBP","EURJPY","EURUSD","GBPCHF","GBPJPY","GBPUSD","NZDUSD","USDCAD","USDCHF","USDJPY",
@@ -33,7 +33,9 @@ public interface Configuration {
 
 	String[] customCmd = {"OIL", "GOLD"};
 
-	String[] instrumentsFX = majorFX;
+    String[][] strongCorrelation = {{"AUDUSD","NZDUSD"},{"NZDUSD","AUDUSD"}};
+
+	String[] instrumentsFX = customFX;
 
     PERIOD_CODE candlePeriod = PERIOD_CODE.PERIOD_M15;
     PERIOD_CODE parentCandlePeriod = PERIOD_CODE.PERIOD_H1;
@@ -54,9 +56,9 @@ public interface Configuration {
     Double acceptableSpreadVsAtr = 0.5;
 
     //test vars
-    Boolean runTest = false;
-    String runTestFX = "USDCHF";
-    int testedIndex = 9;
+    Boolean runTest = true;
+    String runTestFX = "EURUSD";
+    int testedIndex = 0;
     int testWaitingTime = 1000;
 
     Boolean runBot = true;
@@ -64,4 +66,8 @@ public interface Configuration {
     Boolean considerStratetyStrength = false;
 
     Double minWinningRate = 0.48;
+
+    Long maxNumberOfPositionsOpen = 3L;
+
+    Double volumeResizeFactor = 0.8;
 }

@@ -3,6 +3,7 @@ package pl.kordek.forex.bot.indicator;
 import org.ta4j.core.BarSeries;
 import org.ta4j.core.indicators.EMAIndicator;
 import org.ta4j.core.indicators.EMASmartIndicator;
+import org.ta4j.core.indicators.RSIIndicator;
 import org.ta4j.core.indicators.helpers.ClosePriceIndicator;
 import org.ta4j.core.indicators.helpers.ParentIndicator;
 import org.ta4j.core.indicators.helpers.PreviousValueIndicator;
@@ -20,6 +21,7 @@ public class GeneralIndicators {
     protected ParentIndicator parentTrendLine200;
     protected ParentIndicator smartParentTrendLine200;
     protected ParentIndicator smartParentTrendLine50;
+    protected RSIIndicator rsi;
     //private StopLossIndicator slIndicator;
 
     public GeneralIndicators(BarSeries series, BarSeries parentSeries) {
@@ -37,6 +39,7 @@ public class GeneralIndicators {
                 new ParentIndicator(new EMAIndicator(parentClosePrice, 50), parentScaleL.intValue());
         this.smartParentTrendLine50 =
                 new ParentIndicator(new EMASmartIndicator(parentClosePrice, 50), parentScaleL.intValue());
+        this.rsi = new RSIIndicator(closePrice, 14);
     }
 
     public ClosePriceIndicator getClosePrice() {
@@ -70,4 +73,6 @@ public class GeneralIndicators {
     public ParentIndicator getParentTrendLine200() {
         return parentTrendLine200;
     }
+
+    public RSIIndicator getRsi() { return rsi; }
 }

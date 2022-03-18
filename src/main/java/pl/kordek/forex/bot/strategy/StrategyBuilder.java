@@ -1,7 +1,9 @@
 package pl.kordek.forex.bot.strategy;
 
 import org.ta4j.core.*;
+import org.ta4j.core.rules.BooleanRule;
 import pl.kordek.forex.bot.constants.Configuration;
+import pl.kordek.forex.bot.indicator.GeneralIndicators;
 import pl.kordek.forex.bot.rules.PriceActionRules;
 
 import java.util.ArrayList;
@@ -16,11 +18,14 @@ public abstract class StrategyBuilder {
     protected BaseBarSeries series;
     protected BaseBarSeries parentSeries;
     protected PriceActionRules priceActionRules;
+    protected GeneralIndicators generalIndicators;
+    protected Rule exitRule;
 
     abstract public Strategy buildMACDStrategy();
     abstract public Strategy  buildIchimokuStrategy(int checkIndexForChikou);
     abstract public Strategy buildDonchianStrategy();
     abstract public Strategy buildPriceActionStrategy();
+    abstract public Strategy buildBollingerBandsStrategy();
     abstract public double assessStrategyStrength();
 
     StrategyBuilder(BaseBarSeries series, BaseBarSeries parentSeries){
@@ -31,6 +36,8 @@ public abstract class StrategyBuilder {
         this.parentSeries = parentSeries;
 
         this.priceActionRules = new PriceActionRules(series, parentSeries);
+        this.exitRule = new BooleanRule(false);
+        this.generalIndicators = new GeneralIndicators(series,parentSeries);
     }
 
     public List<Strategy> getStrategyList(){
@@ -39,23 +46,22 @@ public abstract class StrategyBuilder {
         strategies.add(buildIchimokuStrategy(series.getEndIndex()));
  //       strategies.add(buildPriceActionStrategy());
         strategies.add(buildDonchianStrategy());
+        strategies.add(buildBollingerBandsStrategy());
         return strategies;
     }
 
     protected double assessStrategyStrength(Rule strategyStrong, Rule strategyWeak){
         Double strategyStrength = 1.0;
-        if(strategyStrong.isSatisfied(series.getEndIndex())) {
-            strategyStrength = 1.5;
-        }
-        else if(strategyWeak.isSatisfied(series.getEndIndex())) {
-            strategyStrength = 0.5;
+        if(Configuration.considerStratetyStrength) {
+            if (strategyStrong.isSatisfied(series.getEndIndex())) {
+                strategyStrength = 1.5;
+            } else if (strategyWeak.isSatisfied(series.getEndIndex())) {
+                strategyStrength = 0.5;
+            }
+
+            System.out.println(new Date() + ":Calculated strategy strength: " + strategyStrength);
         }
 
-        System.out.println(new Date() + ":Calculated strategy strength: "+strategyStrength);
-
-        if(!Configuration.considerStratetyStrength) {
-            strategyStrength = 1.0;
-        }
         return strategyStrength;
     }
 

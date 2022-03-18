@@ -2,24 +2,31 @@ package pl.kordek.forex.bot.strategy;
 
 import org.ta4j.core.*;
 import org.ta4j.core.Trade.TradeType;
+import org.ta4j.core.indicators.EMAIndicator;
+import org.ta4j.core.indicators.RSIIndicator;
+import org.ta4j.core.indicators.bollinger.BollingerBandsLowerIndicator;
+import org.ta4j.core.indicators.bollinger.BollingerBandsMiddleIndicator;
+import org.ta4j.core.indicators.bollinger.BollingerBandsUpperIndicator;
+import org.ta4j.core.indicators.helpers.ClosePriceIndicator;
 import org.ta4j.core.indicators.helpers.SatisfiedCountIndicator;
 import org.ta4j.core.indicators.helpers.StopLossIndicator;
+import org.ta4j.core.indicators.statistics.StandardDeviationIndicator;
 import org.ta4j.core.num.DoubleNum;
 import org.ta4j.core.rules.*;
 import pl.kordek.forex.bot.constants.Configuration;
-import pl.kordek.forex.bot.indicator.DonchianIndicators;
-import pl.kordek.forex.bot.indicator.GeneralIndicators;
-import pl.kordek.forex.bot.indicator.IchimokuIndicators;
-import pl.kordek.forex.bot.indicator.MACDIndicators;
+import pl.kordek.forex.bot.indicator.*;
 import pl.kordek.forex.bot.rules.IchimokuRules;
+import pl.kordek.forex.bot.rules.PriceActionRules;
 
 public class LongStrategyBuilder extends StrategyBuilder {
 
     private Rule stopLossNotExceedingBounds;
     private Rule longSignalsPrevail;
+    private final int rsiStrong = 70;
 
 
-    public LongStrategyBuilder(BaseBarSeries series, BaseBarSeries parentSeries, Indicator stopLossStrategy) {
+
+    public LongStrategyBuilder(BaseBarSeries series, BaseBarSeries parentSeries, Indicator stopLossStrategy, Boolean shouldCloseOnStrongRSI) {
         super(series,parentSeries);
 
         this.tradeType = TradeType.BUY;
@@ -29,6 +36,8 @@ public class LongStrategyBuilder extends StrategyBuilder {
         this.stopLossNotExceedingBounds = new IsEqualRule(
                 new StopLossIndicator(stopLossStrategy, series, Trade.TradeType.BUY, Configuration.stopLossMaxATR, Configuration.stopLossMinATR), DoubleNum.valueOf(0)).negation();
         this.longSignalsPrevail = priceActionRules.getLongSignalsPrevailRule(1);
+
+        this.exitRule = new BooleanRule(shouldCloseOnStrongRSI).and(new OverIndicatorRule(generalIndicators.getRsi(), 70));
     }
 
     @Override
@@ -38,9 +47,10 @@ public class LongStrategyBuilder extends StrategyBuilder {
                 .and(new OverIndicatorRule(macdInd.getClosePrice(), macdInd.getSmartParentTrendLine50()))
                 .and(new CrossedUpIndicatorRule(macdInd.getMacd(), macdInd.getSignal()))
                 .and(new UnderIndicatorRule(macdInd.getMacd(), DoubleNum.valueOf(0)))
+                .and(priceActionRules.getLongSignalsPrevailRule(0))
                 .and(priceActionRules.getPriceActionNotTooDynamic())
                 .and(stopLossNotExceedingBounds);
-        return new BaseStrategy("MACD", macdEntry, new BooleanRule(false));
+        return new BaseStrategy("MACD", macdEntry, exitRule);
     }
 
     @Override
@@ -52,14 +62,17 @@ public class LongStrategyBuilder extends StrategyBuilder {
         Rule tenkanOverCloud = ichimokuRules.getTenkanSenOverCloud();
         Rule tenkanCrossesKijunUp = ichimokuRules.getTenkanCrossesKijunUpRule();
         Rule cloudBullish = ichimokuRules.getCloudBullish();
-        Rule ichimokuEntry = cloudBullish
+        Rule tenkanUnderPrice = new OverIndicatorRule(ichimokuInd.getClosePrice(), ichimokuInd.getTenkanSen());
+
+        Rule ichimokuEntry = new OverIndicatorRule(ichimokuInd.getClosePrice(), ichimokuInd.getSmartTrendLine200())
+                .and(cloudBullish)
                 .and(priceOverCloud)
                 .and(tenkanOverCloud)
                 .and(tenkanCrossesKijunUp)
+                .and(tenkanUnderPrice)
                 .and(priceActionRules.getPriceActionNotTooDynamic())
-                .and(new OverIndicatorRule(ichimokuInd.getClosePrice(), ichimokuInd.getTrendLine200()))
-                .and(new OverIndicatorRule(ichimokuInd.getClosePrice(), ichimokuInd.getTenkanSen()));
-        return new BaseStrategy("Ichimoku", ichimokuEntry, new BooleanRule(false));
+                .and(stopLossNotExceedingBounds);
+        return new BaseStrategy("Ichimoku", ichimokuEntry, exitRule);
     }
 
     @Override
@@ -74,7 +87,7 @@ public class LongStrategyBuilder extends StrategyBuilder {
                 .and(new BooleanIndicatorRule(donchianInd.getIsUpperDRising()))
                 .and(wasLowerDFallingInTheMeantime)
                 .and(stopLossNotExceedingBounds);
-        return new BaseStrategy("Donchian", donchianEntry , new BooleanRule(false));
+        return new BaseStrategy("Donchian", donchianEntry , exitRule);
     }
 
     @Override
@@ -85,7 +98,23 @@ public class LongStrategyBuilder extends StrategyBuilder {
                 .and(priceActionRules.getMarketNotChoppy())
                 .and(priceActionRules.getLongSignalsPrevailRule(3))
                 .and(stopLossNotExceedingBounds);
-        return new BaseStrategy("PriceAction", priceActionEntry , new BooleanRule(false));
+        return new BaseStrategy("PriceAction", priceActionEntry , exitRule);
+    }
+
+    @Override
+    public Strategy buildBollingerBandsStrategy() {
+        GeneralIndicators genInd = new GeneralIndicators(series, parentSeries);
+        PriceActionRules bbPriceActionRules = new PriceActionRules(series,parentSeries,3);
+        BollingerBandsIndicators bbandInd = new BollingerBandsIndicators(series, parentSeries);
+
+        Rule bbEntry = new OverIndicatorRule(genInd.getClosePrice(), genInd.getSmartTrendLine200())
+                .and(new OverIndicatorRule(genInd.getClosePrice(), genInd.getSmartParentTrendLine50()))
+                .and(new CrossedDownIndicatorRule(genInd.getClosePrice(), bbandInd.getLowBBand()))
+                .and(bbPriceActionRules.getPriceActionNotTooDynamic())
+                .and(stopLossNotExceedingBounds);
+
+
+        return new BaseStrategy("BollingerBands", bbEntry , exitRule);
     }
 
 

@@ -40,6 +40,10 @@ public class PositionChecker {
                 .orElse(null);
     }
 
+    public Integer getPositionCount(){
+        return openedPositions.size();
+    }
+
 
     public boolean enterPosition(XTBSymbolOperations api, TradingRecord tradingRecord, TradeInfo tradeInfo) throws XTBCommunicationException {
         if(tradeInfo == null)

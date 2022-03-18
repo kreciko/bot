@@ -133,10 +133,15 @@ public class VolumeAndSLOperations {
 		return true;
 	}
 
-	public Double getOptimalVolume(String symbol,Double strategyStrength){
+	public Double getOptimalVolume(String symbol,Double strategyStrength, int openedPositionsCount){
 		Double volume;
 		try {
 			volume = api.getOptimalVolumeXTB();
+
+			while(!api.isEnoughMargin(volume) && Configuration.maxNumberOfPositionsOpen > openedPositionsCount) {
+				volume = BigDecimal.valueOf(Configuration.volumeResizeFactor*volume).setScale(2, RoundingMode.HALF_UP).doubleValue();
+				System.out.println(new Date() + ": Not enough margin, but less than max:"+Configuration.maxNumberOfPositionsOpen+" positions open. Resizing the volume to "+volume);
+			}
 		}
 		catch(Exception e){
 			System.out.println(new Date() +": XTB Exception:" + e.getMessage() + " . Setting the vol to 0.05");

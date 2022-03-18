@@ -6,6 +6,7 @@ import org.ta4j.core.Trade;
 import org.ta4j.core.TradingRecord;
 import pl.kordek.forex.bot.Robot;
 import pl.kordek.forex.bot.constants.Configuration;
+import pl.kordek.forex.bot.domain.BackTestInfo;
 import pl.kordek.forex.bot.domain.BlackListOperation;
 import pl.kordek.forex.bot.domain.RobotInfo;
 import pl.kordek.forex.bot.exceptions.SerializationFailedException;
@@ -67,8 +68,8 @@ public class InitOperations {
         return durationMap;
     }
 
-    public HashMap<String, HashMap<String, BigDecimal>> initWinningRatios() throws IOException {
-        HashMap<String, HashMap<String, BigDecimal>> winningRatioMap = new HashMap<String, HashMap<String, BigDecimal>>();
+    public HashMap<String, HashMap<String, BackTestInfo>> initWinningRatios() throws IOException {
+        HashMap<String, HashMap<String, BackTestInfo>> winningRatioMap = new HashMap<>();
         InputStream stream = Robot.class.getClassLoader().getResourceAsStream("winning_ratios.csv");
         String strategyName = "";
 
@@ -79,7 +80,8 @@ public class InitOperations {
                     winningRatioMap.put(line[0], new HashMap<>());
                     strategyName = line[0];
                 }
-                winningRatioMap.get(strategyName).put(line[1], new BigDecimal(line[2]));
+                winningRatioMap.get(strategyName).put(line[1], new BackTestInfo(new BigDecimal(line[2]), Double.valueOf(line[4].replace(" profit:","")),
+                        Double.valueOf(line[5].replace(" maxLost:","")), Double.valueOf(line[6].replace(" maxWon:",""))));
             }
 
         } catch (IOException ioe) {

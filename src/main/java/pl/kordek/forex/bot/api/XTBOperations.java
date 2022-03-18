@@ -48,9 +48,10 @@ public class XTBOperations {
         return openedPositionList;
     }
 
-    public Double getMarginFree() throws APICommandConstructionException, APIReplyParseException, APICommunicationException, APIErrorResponse {
+    public Double getMarginFree() throws APIErrorResponse, APICommunicationException, APIReplyParseException, APICommandConstructionException, InterruptedException {
         MarginLevelResponse marginLevelResponse;
         marginLevelResponse = APICommandFactory.executeMarginLevelCommand(connector);
+        Thread.sleep(250);
         return marginLevelResponse.getMargin_free();
     }
 
@@ -64,7 +65,7 @@ public class XTBOperations {
             Thread.sleep(250);
         } catch (APICommandConstructionException | APIReplyParseException | APICommunicationException
                 | APIErrorResponse | InterruptedException e1) {
-            System.out.println(new Date() + ": Failed to close in XTB" + tr.getSymbol());
+            System.out.println(new Date() + ": Failed to close in XTB " + tr.getSymbol());
             throw new XTBCommunicationException("Couldn't close the position in XTB due to communication problems: "+tr.getSymbol());
         }
 

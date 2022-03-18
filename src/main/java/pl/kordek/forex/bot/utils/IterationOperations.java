@@ -52,7 +52,8 @@ public class IterationOperations {
 
             BaseBar Bar = new BaseBar(duration, endTime, openD, highD, lowD, closeD,
                     rateInfoRecord.getVol());
-            barList.add(Bar);
+            if(!(open.equals(close) && low.equals(high)))
+                barList.add(Bar);
         }
         return new BaseBarSeries(symbol, barList);
     }

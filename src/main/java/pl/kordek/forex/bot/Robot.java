@@ -11,6 +11,7 @@ import org.ta4j.core.num.Num;
 import pl.kordek.forex.bot.api.XTBSymbolOperations;
 import pl.kordek.forex.bot.checker.PositionChecker;
 import pl.kordek.forex.bot.constants.Configuration;
+import pl.kordek.forex.bot.domain.BackTestInfo;
 import pl.kordek.forex.bot.domain.BlackListOperation;
 import pl.kordek.forex.bot.domain.RobotInfo;
 import pl.kordek.forex.bot.domain.TradeInfo;
@@ -20,11 +21,13 @@ import pl.kordek.forex.bot.strategy.ShortStrategyBuilder;
 import pl.kordek.forex.bot.strategy.StrategyBuilder;
 import pl.kordek.forex.bot.utils.VolumeAndSLOperations;
 import pro.xstore.api.message.records.TradeRecord;
+import pro.xstore.api.message.response.SymbolResponse;
 
 import java.math.BigDecimal;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 public class Robot {
@@ -42,7 +45,7 @@ public class Robot {
 
 	//TradeRecord is a class from xtb API. Don't mistake with TradingRecord from ta4j
 	private List<TradeRecord> openedPositions = null;
-	private HashMap<String, HashMap<String, BigDecimal>> winningRatioMap = null;
+	private HashMap<String, HashMap<String, BackTestInfo>> winningRatioMap = null;
 	private VolumeAndSLOperations volAndSLOperations = null;
 	private XTBSymbolOperations api;
 	private String currentSymbol;
@@ -50,9 +53,11 @@ public class Robot {
 
 
 	public Robot(XTBSymbolOperations api, BaseBarSeries series, BaseBarSeries parentSeries, RobotInfo robotInfo,
-				 HashMap<String, HashMap<String, BigDecimal>> winningRatioMap) throws XTBCommunicationException {
+				 HashMap<String, HashMap<String, BackTestInfo>> winningRatioMap) throws XTBCommunicationException {
 		this.api = api;
 		this.currentSymbol = api.getSr().getSymbol().getSymbol();
+
+		SymbolResponse sr = api.getSr();
 
 		this.series = series;
 		this.parentSeries = parentSeries;
@@ -67,35 +72,35 @@ public class Robot {
 
 	public boolean runRobotIteration() throws XTBCommunicationException, InterruptedException {
 			int endIndex = series.getEndIndex();
+			PositionChecker positionChecker = new PositionChecker(openedPositions);
 
 			ATRIndicator atr = new ATRIndicator(series,14);
 
 			Indicator stopLossLongStrategy = new DifferenceIndicator(new ClosePriceIndicator(series), TransformIndicator.multiply(atr, 2));
 			Indicator stopLossShortStrategy = new SumIndicator(new ClosePriceIndicator(series), TransformIndicator.multiply(atr, 2));
 
-			boolean longPos = checkForPositions(longTradingRecord, new LongStrategyBuilder(series, parentSeries, stopLossLongStrategy));
+			Boolean shouldCloseOnStringRSI = shouldCloseOnStrongRSI(positionChecker);
+
+			boolean longPos = checkForPositions(longTradingRecord, positionChecker, new LongStrategyBuilder(series, parentSeries, stopLossLongStrategy, shouldCloseOnStringRSI));
 			if(longPos)
 				return true;
 
-			boolean shortPos = checkForPositions(shortTradingRecord, new ShortStrategyBuilder(series, parentSeries, stopLossShortStrategy));
+			boolean shortPos = checkForPositions(shortTradingRecord, positionChecker, new ShortStrategyBuilder(series, parentSeries, stopLossShortStrategy, shouldCloseOnStringRSI));
 			if(shortPos)
 				return true;
 
 			return false;
 	}
 
-	private boolean checkForPositions(TradingRecord tradingRecord, StrategyBuilder strategyBuilder) throws XTBCommunicationException {
+	private boolean checkForPositions(TradingRecord tradingRecord, PositionChecker positionChecker, StrategyBuilder strategyBuilder) throws XTBCommunicationException {
 		TradeType tradeType = strategyBuilder.tradeType;
 		if(blackListOperation != null && blackListOperation.getTypeOfOperation() == tradeType)
 			return false;
-		PositionChecker positionChecker = new PositionChecker(openedPositions);
+
 		boolean positionOpenedAndValid = positionChecker.isPositionOpenedAndOperationValid(currentSymbol, tradeType);
 
 		String strategyWithEntrySignal = getStrategyWithEntrySignal(series.getEndIndex(), tradingRecord,
 				strategyBuilder.getStrategyList(), winningRatioMap, currentSymbol);
-		String strategyWithExitSignal = getStrategyWithExitSignal(series.getEndIndex(), tradingRecord,
-				strategyBuilder.getStrategyList());
-
 
 
 		if (!positionOpenedAndValid && !strategyWithEntrySignal.isEmpty()) {
@@ -109,8 +114,13 @@ public class Robot {
 			if(volAndSLOperations.shouldUpdateStopLoss(currentSymbolTR, tradeType))
 				api.updateStopLossXTB(currentSymbolTR, tradeType);
 
-			if (!strategyWithExitSignal.isEmpty()) {
-				return positionChecker.exitPosition(api, series, tradingRecord, currentSymbolTR);
+			Optional<Strategy> exitStrategy = strategyBuilder.getStrategyList().stream().filter(e-> e.getName().equals(currentSymbolTR.getCustomComment())).findAny();
+			if(exitStrategy.isPresent()) {
+				Boolean exitSignalExists = checkExitSignal(series.getEndIndex(), tradingRecord, exitStrategy.get());
+
+				if (exitSignalExists) {
+					return positionChecker.exitPosition(api, series, tradingRecord, currentSymbolTR);
+				}
 			}
 		}
 
@@ -119,13 +129,13 @@ public class Robot {
 
 	private TradeInfo getEntryTradeInfo(StrategyBuilder strategyBuilder, String strategyWithEntrySignal)
 			throws XTBCommunicationException {
-		TradeType tradeType = strategyBuilder.tradeType.complementType();
+		TradeType tradeType = strategyBuilder.tradeType;
 		BigDecimal stopLoss = volAndSLOperations.calculateStopLoss(tradeType, strategyBuilder.stopLossStrategy, series);
 		BigDecimal takeProfit = volAndSLOperations.calculateTakeProfit(tradeType, stopLoss);
 		System.out.println(new Date() + ": "+tradeType + " strategy should ENTER on " + currentSymbol
 				+ ". Bar close price "+series.getLastBar().getClosePrice() + ". Stop Loss: "+stopLoss.doubleValue()+ " Take Profit: " + takeProfit.doubleValue());
 
-		Double volume = volAndSLOperations.getOptimalVolume(currentSymbol, strategyBuilder.assessStrategyStrength());
+		Double volume = volAndSLOperations.getOptimalVolume(currentSymbol, strategyBuilder.assessStrategyStrength(), openedPositions.size());
 
 		if(!volAndSLOperations.volumeAndSlChecks(volume, stopLoss.doubleValue())) {
 			return null;
@@ -137,29 +147,39 @@ public class Robot {
 
 
 	private String getStrategyWithEntrySignal(int endIndex, TradingRecord tradingRecord, List<Strategy> baseStrategies,
-											 HashMap<String, HashMap<String, BigDecimal>> winningRatioMap, String symbol) {
+											 HashMap<String, HashMap<String, BackTestInfo>> winningRatioMap, String symbol) {
 		for(Strategy strategy : baseStrategies) {
-			HashMap<String, BigDecimal> winRatioStrategyMap = winningRatioMap.get(strategy.getName());
-			if(strategy.shouldEnter(endIndex, tradingRecord)
-					&& winRatioStrategyMap.containsKey(symbol)
-					&& winRatioStrategyMap.get(symbol).compareTo(BigDecimal.valueOf(Configuration.minWinningRate)) > 0)
+			HashMap<String, BackTestInfo> winRatioStrategyMap = winningRatioMap.get(strategy.getName());
+			if(checkProfitableBacktestData(winRatioStrategyMap, symbol) && strategy.shouldEnter(endIndex, tradingRecord))
 			{
-				System.out.println(new Date() + ": "+strategy.getName()+" strategy signal for a symbol with winning ratio: "+winningRatioMap.get(strategy.getName()).get(symbol) +" - "+symbol);
+				System.out.println(new Date() + ": "+strategy.getName()+" strategy signal for a symbol with winning ratio: "+winningRatioMap.get(strategy.getName()).get(symbol).getWinRate() +" - "+symbol);
 				return strategy.getName();
 			}
 		}
 		return "";
 	}
 
-	private String getStrategyWithExitSignal(int endIndex, TradingRecord tradingRecord, List<Strategy> baseStrategies) {
-		for(Strategy strategy : baseStrategies) {
-			if(strategy.shouldExit(endIndex, tradingRecord))
-			{
-				System.out.println(new Date() + ": "+strategy.getName()+" strategy exit signal. Current profit ratio of this strategy:");
-				return strategy.getName();
-			}
+	private boolean checkProfitableBacktestData(HashMap<String, BackTestInfo> winRatioStrategyMap, String symbol){
+		return winRatioStrategyMap.containsKey(symbol);
+	}
+
+	private Boolean checkExitSignal(int endIndex, TradingRecord tradingRecord, Strategy strategy) {
+		if(strategy.shouldExit(endIndex, tradingRecord))
+		{
+			System.out.println(new Date() + ": Exit signal for symbol "+tradingRecord.getName());
+			return true;
 		}
-		return "";
+		return false;
+	}
+
+	private Boolean shouldCloseOnStrongRSI(PositionChecker positionChecker){
+		TradeRecord currentSymbolTR = positionChecker.getOpenedPosition(currentSymbol);
+
+		//if stop loss is changed to the same price as open price then we should close on high rsi
+		if(currentSymbolTR!=null && currentSymbolTR.getOpen_price().equals(currentSymbolTR.getSl())){
+			return true;
+		}
+		return false;
 	}
 
 	private void updateLiveWinningRatiosForStrategies(List<Strategy> strategies){
