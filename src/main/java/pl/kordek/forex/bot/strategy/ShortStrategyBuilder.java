@@ -35,7 +35,7 @@ public class ShortStrategyBuilder extends StrategyBuilder {
     public Strategy buildMACDStrategy() {
         MACDIndicators macdInd = new MACDIndicators(series, parentSeries);
         Rule macdEntry = new UnderIndicatorRule(macdInd.getClosePrice(), macdInd.getSmartTrendLine200())
-                .and(new UnderIndicatorRule(macdInd.getClosePrice(), macdInd.getSmartParentTrendLine50()))
+                .and(new UnderIndicatorRule(macdInd.getClosePriceParentInd(), macdInd.getSmartParentTrendLine50()))
                 .and(new CrossedDownIndicatorRule(macdInd.getMacd(), macdInd.getSignal()))
                 .and(new OverIndicatorRule(macdInd.getMacd(), DoubleNum.valueOf(0)))
                 .and(priceActionRules.getShortSignalsPrevailRule(0))
@@ -53,14 +53,15 @@ public class ShortStrategyBuilder extends StrategyBuilder {
         Rule tenkanUnderCloud = ichimokuRules.getTenkanSenUnderCloud();
         Rule tenkanCrossesKijunDown = ichimokuRules.getTenkanCrossesKijunDownRule();
         Rule cloudBearish = ichimokuRules.getCloudBearish();
-        Rule tenkanOverPrice = new UnderIndicatorRule(ichimokuInd.getClosePrice(), ichimokuInd.getTenkanSen());
+        Rule priceUnderTenkan = new UnderIndicatorRule(ichimokuInd.getClosePrice(), ichimokuInd.getTenkanSen());
 
-        Rule ichimokuEntry = new UnderIndicatorRule(ichimokuInd.getClosePrice(), ichimokuInd.getSmartTrendLine200())
+        Rule ichimokuEntry = new UnderIndicatorRule(ichimokuInd.getClosePrice(), ichimokuInd.getTrendLine200())
                 .and(cloudBearish)
                 .and(priceUnderCloud)
                 .and(tenkanUnderCloud)
                 .and(tenkanCrossesKijunDown)
-                .and(tenkanOverPrice)
+                .and(priceUnderTenkan)
+                .and(priceActionRules.getLongSignalsPrevailRule(1))
                 .and(priceActionRules.getPriceActionNotTooDynamic())
                 .and(stopLossNotExceedingBounds);
         return new BaseStrategy("Ichimoku", ichimokuEntry, exitRule);
@@ -73,10 +74,12 @@ public class ShortStrategyBuilder extends StrategyBuilder {
                 new SatisfiedCountIndicator(donchianInd.getIsUpperDRising(), donchianInd.getLowerDRisingCount()), 0);
 
         Rule donchianEntry = new UnderIndicatorRule(donchianInd.getClosePrice(), donchianInd.getSmartTrendLine200())
-                .and(new UnderIndicatorRule(donchianInd.getClosePrice(), donchianInd.getSmartParentTrendLine200()))
+                .and(new UnderIndicatorRule(donchianInd.getClosePriceParentInd(), donchianInd.getSmartParentTrendLine50()))
                 .and(new BooleanIndicatorRule(donchianInd.getWasLowerDRising()))
                 .and(new BooleanIndicatorRule(donchianInd.getIsLowerDFalling()))
                 .and(wasUpperDRisingInTheMeantime)
+                .and(priceActionRules.getShortSignalsPrevailRule(0))
+                .and(priceActionRules.getPriceActionNotTooDynamic())
                 .and(stopLossNotExceedingBounds);
         return new BaseStrategy("Donchian", donchianEntry , exitRule);
     }
@@ -95,13 +98,13 @@ public class ShortStrategyBuilder extends StrategyBuilder {
     @Override
     public Strategy buildBollingerBandsStrategy() {
         GeneralIndicators genInd = new GeneralIndicators(series, parentSeries);
-        PriceActionRules bbPriceActionRules = new PriceActionRules(series,parentSeries,3);
         BollingerBandsIndicators bbandInd = new BollingerBandsIndicators(series, parentSeries);
 
         Rule bbEntry = new UnderIndicatorRule(genInd.getClosePrice(), genInd.getSmartTrendLine200())
-                .and(new UnderIndicatorRule(genInd.getClosePrice(), genInd.getSmartParentTrendLine50()))
+                .and(new UnderIndicatorRule(genInd.getClosePriceParentInd(), genInd.getSmartParentTrendLine50()))
                 .and(new CrossedUpIndicatorRule(genInd.getClosePrice(), bbandInd.getUpBBand()))
-                .and(bbPriceActionRules.getPriceActionNotTooDynamic())
+                .and(priceActionRules.getShortSignalsPrevailRule(0))
+                .and(priceActionRules.getPriceActionNotTooDynamic())
                 .and(stopLossNotExceedingBounds);
 
 

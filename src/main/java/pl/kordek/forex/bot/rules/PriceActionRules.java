@@ -149,7 +149,6 @@ public class PriceActionRules {
 	}
 
 	public Rule getLongSignalsPrevailRule(int minDifference) {
-		//we subtract 1 because its "OverIndicator"
 		return new OverIndicatorRule(satisfiedPriceActionIndicators.getLongMinusShortSignals(), DoubleNum.valueOf(minDifference - 1));
 	}
 

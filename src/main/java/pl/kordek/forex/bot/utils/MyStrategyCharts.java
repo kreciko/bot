@@ -26,24 +26,6 @@ import java.util.Date;
 import java.util.List;
 
 public class MyStrategyCharts {
-    /**
-     * Builds a JFreeChart time series from a Ta4j bar series and an indicator.
-     *
-     * @param barSeries the ta4j bar series
-     * @param indicator the indicator
-     * @param name      the name of the chart time series
-     * @return the JFreeChart time series
-     */
-    private static org.jfree.data.time.TimeSeries buildChartTimeSeries(BarSeries barSeries, Indicator<Num> indicator,
-                                                                       String name) {
-        org.jfree.data.time.TimeSeries chartTimeSeries = new org.jfree.data.time.TimeSeries(name);
-        for (int i = 0; i < barSeries.getBarCount(); i++) {
-            Bar bar = barSeries.getBar(i);
-            chartTimeSeries.add(new Minute(Date.from(bar.getEndTime().toInstant())),
-                    indicator.getValue(i).doubleValue());
-        }
-        return chartTimeSeries;
-    }
 
     private static org.jfree.data.time.TimeSeries buildChartBarSeries(BarSeries BarSeries, Indicator<Num> indicator, String name) {
         org.jfree.data.time.TimeSeries chartBarSeries = new org.jfree.data.time.TimeSeries(name);

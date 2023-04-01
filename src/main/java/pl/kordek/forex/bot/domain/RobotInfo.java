@@ -3,6 +3,7 @@ package pl.kordek.forex.bot.domain;
 import java.io.Serializable;
 import java.util.HashMap;
 
+import org.ta4j.core.BaseBarSeries;
 import org.ta4j.core.TradingRecord;
 
 public class RobotInfo implements Serializable{
@@ -16,16 +17,18 @@ public class RobotInfo implements Serializable{
 	
 	private HashMap<String, TradingRecord> longTradingRecordMap;
 	private HashMap<String, TradingRecord> shortTradingRecordMap;
+	private HashMap<String, BaseBarSeries> baseBarSeriesMap;
 	private HashMap<String,BlackListOperation> blackList;
 	private int robotIteration;
 
 
 
-	public RobotInfo(HashMap<String, TradingRecord> longTradingRecordMap, HashMap<String, TradingRecord> shortTradingRecordMap,
+	public RobotInfo(HashMap<String, TradingRecord> longTradingRecordMap, HashMap<String, TradingRecord> shortTradingRecordMap, HashMap<String, BaseBarSeries> baseBarSeriesMap,
 			HashMap<String, BlackListOperation> blackList, int robotIteration) {
 		super();
 		this.longTradingRecordMap = longTradingRecordMap;
 		this.shortTradingRecordMap = shortTradingRecordMap;
+		this.baseBarSeriesMap = baseBarSeriesMap;
 		this.blackList = blackList;
 		this.robotIteration = robotIteration;
 	}
@@ -65,6 +68,12 @@ public class RobotInfo implements Serializable{
 	public void setBlackList(HashMap<String, BlackListOperation> blackList) {
 		this.blackList = blackList;
 	}
-	
-	
+
+	public HashMap<String, BaseBarSeries> getBaseBarSeriesMap() {
+		return baseBarSeriesMap;
+	}
+
+	public void setBaseBarSeriesMap(HashMap<String, BaseBarSeries> baseBarSeriesMap) {
+		this.baseBarSeriesMap = baseBarSeriesMap;
+	}
 }

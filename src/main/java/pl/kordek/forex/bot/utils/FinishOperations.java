@@ -1,7 +1,12 @@
 package pl.kordek.forex.bot.utils;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.ta4j.core.BaseBarSeries;
 import org.ta4j.core.TradingRecord;
+import pl.kordek.forex.bot.Robot;
 import pl.kordek.forex.bot.domain.BlackListOperation;
+import pl.kordek.forex.bot.domain.PositionInfo;
 import pl.kordek.forex.bot.domain.RobotInfo;
 import pl.kordek.forex.bot.exceptions.SerializationFailedException;
 import pl.kordek.forex.bot.exceptions.XTBCommunicationException;
@@ -23,10 +28,13 @@ import java.util.*;
 import static java.util.stream.Collectors.toList;
 
 public class FinishOperations {
+    private static final Logger logger = LogManager.getLogger(FinishOperations.class);
+
     private int robotIteration;
     private HashMap<String,BlackListOperation> blackList;
     private HashMap<String, TradingRecord> longTradingRecordsMap;
     private HashMap<String, TradingRecord> shortTradingRecordsMap;
+    private HashMap<String, BaseBarSeries> baseBarSeriesMap;
 
 
     public FinishOperations(RobotInfo robotInfo) {
@@ -34,6 +42,7 @@ public class FinishOperations {
         this.blackList = robotInfo.getBlackList();
         this.longTradingRecordsMap = robotInfo.getLongTradingRecordMap();
         this.shortTradingRecordsMap = robotInfo.getShortTradingRecordMap();
+        this.baseBarSeriesMap = robotInfo.getBaseBarSeriesMap();
     }
 
     public void updateBlackList(SyncAPIConnector connector, Duration durationPeriod)
@@ -79,7 +88,7 @@ public class FinishOperations {
         List<HashMap<String, TradingRecord>> tradingRecordsMaps = new ArrayList<>();
         tradingRecordsMaps.add(longTradingRecordsMap);
         tradingRecordsMaps.add(shortTradingRecordsMap);
-        RobotInfo info = new RobotInfo(longTradingRecordsMap, shortTradingRecordsMap, blackList, robotIteration+1);
+        RobotInfo info = new RobotInfo(longTradingRecordsMap, shortTradingRecordsMap, baseBarSeriesMap, blackList, robotIteration+1);
 
         try (ObjectOutputStream outputStream = new ObjectOutputStream(new FileOutputStream(robotInfoFileLocation))) {
             outputStream.writeObject(info);
@@ -88,12 +97,10 @@ public class FinishOperations {
         }
     }
 
-    public void printIterationInfos(List<TradeRecord> openedPositionsList ,List<String> spreadTooLargeSymbols){
-        System.out.print(new Date() + ": "+robotIteration+" robot iteration. Positions opened: "
-                + openedPositionsList.stream().map(e -> e.getSymbol()).collect(toList()));
-        System.out.println(" Black list: "+blackList.values().stream().map(e -> e.getInstrument() + " " + e.getTypeOfOperation()).collect(toList()));
-        System.out.println(new Date() + ": Spread too wide for following:"+spreadTooLargeSymbols);
-        System.out.println();
+    public void printIterationInfos(List<PositionInfo> openedPositionsList , List<String> spreadTooLargeSymbols){
+        logger.info("{} robot iteration. Positions opened: {}", robotIteration, openedPositionsList.stream().map(e -> e.getSymbol()).collect(toList()));
+        //logger.info("Black list: "+blackList.values().stream().map(e -> e.getInstrument() + " " + e.getTypeOfOperation()).collect(toList()));
+        logger.info("Spread too wide for following: {}",spreadTooLargeSymbols);
     }
 
 

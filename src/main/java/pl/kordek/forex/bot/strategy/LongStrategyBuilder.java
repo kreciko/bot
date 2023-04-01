@@ -43,12 +43,11 @@ public class LongStrategyBuilder extends StrategyBuilder {
     @Override
     public Strategy buildMACDStrategy() {
         MACDIndicators macdInd = new MACDIndicators(series, parentSeries);
-        Rule macdEntry = new OverIndicatorRule(macdInd.getClosePrice(), macdInd.getSmartTrendLine200())
-                .and(new OverIndicatorRule(macdInd.getClosePrice(), macdInd.getSmartParentTrendLine50()))
+        Rule macdEntry = new OverIndicatorRule(macdInd.getClosePrice(), macdInd.getTrendLine200())
                 .and(new CrossedUpIndicatorRule(macdInd.getMacd(), macdInd.getSignal()))
                 .and(new UnderIndicatorRule(macdInd.getMacd(), DoubleNum.valueOf(0)))
-                .and(priceActionRules.getLongSignalsPrevailRule(0))
-                .and(priceActionRules.getPriceActionNotTooDynamic())
+                //.and(priceActionRules.getLongSignalsPrevailRule(0))
+                //.and(priceActionRules.getPriceActionNotTooDynamic())
                 .and(stopLossNotExceedingBounds);
         return new BaseStrategy("MACD", macdEntry, exitRule);
     }
@@ -62,15 +61,15 @@ public class LongStrategyBuilder extends StrategyBuilder {
         Rule tenkanOverCloud = ichimokuRules.getTenkanSenOverCloud();
         Rule tenkanCrossesKijunUp = ichimokuRules.getTenkanCrossesKijunUpRule();
         Rule cloudBullish = ichimokuRules.getCloudBullish();
-        Rule tenkanUnderPrice = new OverIndicatorRule(ichimokuInd.getClosePrice(), ichimokuInd.getTenkanSen());
+        Rule priceOverTenkan = new OverIndicatorRule(ichimokuInd.getClosePrice(), ichimokuInd.getTenkanSen());
 
-        Rule ichimokuEntry = new OverIndicatorRule(ichimokuInd.getClosePrice(), ichimokuInd.getSmartTrendLine200())
+        Rule ichimokuEntry = new OverIndicatorRule(ichimokuInd.getClosePrice(), ichimokuInd.getTrendLine200())
                 .and(cloudBullish)
                 .and(priceOverCloud)
                 .and(tenkanOverCloud)
                 .and(tenkanCrossesKijunUp)
-                .and(tenkanUnderPrice)
-                .and(priceActionRules.getPriceActionNotTooDynamic())
+                .and(priceOverTenkan)
+                //.and(priceActionRules.getPriceActionNotTooDynamic())
                 .and(stopLossNotExceedingBounds);
         return new BaseStrategy("Ichimoku", ichimokuEntry, exitRule);
     }
@@ -82,10 +81,12 @@ public class LongStrategyBuilder extends StrategyBuilder {
                 new SatisfiedCountIndicator(donchianInd.getIsLowerDFalling(), donchianInd.getUpperDFallingCount()), 0);
 
         Rule donchianEntry = new OverIndicatorRule(donchianInd.getClosePrice(), donchianInd.getSmartTrendLine200())
-                .and(new OverIndicatorRule(donchianInd.getClosePrice(), donchianInd.getSmartParentTrendLine200()))
+                .and(new OverIndicatorRule(donchianInd.getClosePriceParentInd(), donchianInd.getSmartParentTrendLine50()))
                 .and(new BooleanIndicatorRule(donchianInd.getWasUpperDFalling()))
                 .and(new BooleanIndicatorRule(donchianInd.getIsUpperDRising()))
                 .and(wasLowerDFallingInTheMeantime)
+                .and(priceActionRules.getLongSignalsPrevailRule(0))
+                .and(priceActionRules.getPriceActionNotTooDynamic())
                 .and(stopLossNotExceedingBounds);
         return new BaseStrategy("Donchian", donchianEntry , exitRule);
     }
@@ -104,13 +105,12 @@ public class LongStrategyBuilder extends StrategyBuilder {
     @Override
     public Strategy buildBollingerBandsStrategy() {
         GeneralIndicators genInd = new GeneralIndicators(series, parentSeries);
-        PriceActionRules bbPriceActionRules = new PriceActionRules(series,parentSeries,3);
         BollingerBandsIndicators bbandInd = new BollingerBandsIndicators(series, parentSeries);
 
-        Rule bbEntry = new OverIndicatorRule(genInd.getClosePrice(), genInd.getSmartTrendLine200())
-                .and(new OverIndicatorRule(genInd.getClosePrice(), genInd.getSmartParentTrendLine50()))
+        Rule bbEntry = new OverIndicatorRule(genInd.getClosePrice(), genInd.getTrendLine200())
                 .and(new CrossedDownIndicatorRule(genInd.getClosePrice(), bbandInd.getLowBBand()))
-                .and(bbPriceActionRules.getPriceActionNotTooDynamic())
+                //.and(priceActionRules.getLongSignalsPrevailRule(0))
+                //.and(priceActionRules.getPriceActionNotTooDynamic())
                 .and(stopLossNotExceedingBounds);
 
 

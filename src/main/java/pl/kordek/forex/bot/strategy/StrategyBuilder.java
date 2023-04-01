@@ -1,7 +1,10 @@
 package pl.kordek.forex.bot.strategy;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.ta4j.core.*;
 import org.ta4j.core.rules.BooleanRule;
+import pl.kordek.forex.bot.checker.PositionChecker;
 import pl.kordek.forex.bot.constants.Configuration;
 import pl.kordek.forex.bot.indicator.GeneralIndicators;
 import pl.kordek.forex.bot.rules.PriceActionRules;
@@ -11,6 +14,8 @@ import java.util.Date;
 import java.util.List;
 
 public abstract class StrategyBuilder {
+    private static final Logger logger = LogManager.getLogger(StrategyBuilder.class);
+
     public Trade.TradeType tradeType;
     public int typeOfOperation;
     public Indicator stopLossStrategy;
@@ -43,10 +48,10 @@ public abstract class StrategyBuilder {
     public List<Strategy> getStrategyList(){
         ArrayList<Strategy> strategies = new ArrayList<>();
         strategies.add(buildMACDStrategy());
-        strategies.add(buildIchimokuStrategy(series.getEndIndex()));
+  //      strategies.add(buildIchimokuStrategy(series.getEndIndex()));
  //       strategies.add(buildPriceActionStrategy());
-        strategies.add(buildDonchianStrategy());
-        strategies.add(buildBollingerBandsStrategy());
+ //       strategies.add(buildDonchianStrategy());
+ //       strategies.add(buildBollingerBandsStrategy());
         return strategies;
     }
 
@@ -58,8 +63,7 @@ public abstract class StrategyBuilder {
             } else if (strategyWeak.isSatisfied(series.getEndIndex())) {
                 strategyStrength = 0.5;
             }
-
-            System.out.println(new Date() + ":Calculated strategy strength: " + strategyStrength);
+            logger.info("Calculated strategy strength: {}", strategyStrength);
         }
 
         return strategyStrength;

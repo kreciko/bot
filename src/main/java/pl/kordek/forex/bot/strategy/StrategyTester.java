@@ -1,11 +1,8 @@
 package pl.kordek.forex.bot.strategy;
 
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.Scanner;
 
 import org.ta4j.core.*;
@@ -30,37 +27,31 @@ import org.ta4j.core.num.DoubleNum;
 import org.ta4j.core.num.Num;
 import org.ta4j.core.rules.*;
 
-import pl.kordek.forex.bot.api.XTBOperations;
-import pl.kordek.forex.bot.api.XTBSymbolOperations;
-import pl.kordek.forex.bot.constants.Configuration;
-import pl.kordek.forex.bot.exceptions.XTBCommunicationException;
+import pl.kordek.forex.bot.api.BrokerAPI;
+import pl.kordek.forex.bot.checker.TradeQualityChecker;
+import pl.kordek.forex.bot.domain.PositionInfo;
+import pl.kordek.forex.bot.domain.SymbolResponseInfo;
+import pl.kordek.forex.bot.domain.TradeInfo;
 import pl.kordek.forex.bot.indicator.GeneralIndicators;
 import pl.kordek.forex.bot.indicator.IchimokuIndicators;
 import pl.kordek.forex.bot.indicator.MACDIndicators;
 import pl.kordek.forex.bot.rules.PriceActionRules;
 import pl.kordek.forex.bot.rules.IchimokuRules;
 import pl.kordek.forex.bot.utils.MyStrategyCharts;
-import pro.xstore.api.message.error.APICommandConstructionException;
 import pro.xstore.api.message.error.APICommunicationException;
-import pro.xstore.api.message.error.APIReplyParseException;
-import pro.xstore.api.message.records.TradeRecord;
-import pro.xstore.api.message.response.APIErrorResponse;
-import pro.xstore.api.sync.SyncAPIConnector;
 
 public class StrategyTester {
 	private BaseBarSeries series = null;
 	private BaseBarSeries parentSeries = null;
-	private SyncAPIConnector connector = null;
+	private BrokerAPI api = null;
 
-	public StrategyTester(BaseBarSeries series, BaseBarSeries parentSeries, SyncAPIConnector connector) {
+	public StrategyTester(BrokerAPI api, BaseBarSeries series, BaseBarSeries parentSeries) {
 		this.series = series;
 		this.parentSeries = parentSeries;
-		this.connector = connector;
+		this.api = api;
 	}
 
 	public void strategyTest(int index, String symbol) {
-		StrategyBuilderOld stratBuilder = new StrategyBuilderOld(index, series, parentSeries);
-
 
 		Indicator<Num> donchianIndLong =
 				new DonchianChannelLowerIndicator(series, 20);
@@ -77,17 +68,8 @@ public class StrategyTester {
 		OpenPriceIndicator openPrice = new OpenPriceIndicator(series);
 		ClosePriceIndicator closePrice = new ClosePriceIndicator(series);
 
-//		for(Strategy shortStrat : shortStrategies) {
-//			System.out.println(shortStrat.getName()+" Should enter short for: " + symbol + " index:" + index + " price:" + closePrice.getValue(index)
-//					+ " = " + shortStrat.shouldEnter(index));
-//		}
-//		for(Strategy longStrat : longStrategies) {
-//			System.out.println(longStrat.getName()+" Should enter long for: " + symbol + " index:" + index + " price:" + closePrice.getValue(index)
-//				+ " = " + longStrat.shouldEnter(index));
-//		}
-
 		System.out.println("End Index :"+index);
-		for(int i= index; i>=index-200; i--){
+		for(int i= index; i>=index-50; i--){
 			for(Strategy shortStrat : shortStrategies) {
 				if(shortStrat.shouldEnter(i))
 				System.out.println(shortStrat.getName()+" Should enter short for: " + symbol + " index:" + i + " price:" + closePrice.getValue(i)
@@ -105,39 +87,27 @@ public class StrategyTester {
 
 		System.out.println();
 		System.out.println("Symbol: " + symbol);
+		System.out.println("Close Price: " + closePrice.getValue(index));
 		PriceActionRules priceActionRules = new PriceActionRules(series, parentSeries);
 		System.out.println("Long sig:"+priceActionRules.getLongEntrySignals().getValue(index));
 		System.out.println("Short sig:"+priceActionRules.getShortEntrySignals().getValue(index));
 		System.out.println("Long signals prevail (diff 0):" +priceActionRules.getLongSignalsPrevailRule(0).isSatisfied(index));
 		System.out.println("PA not too dynamic:" +priceActionRules.getPriceActionNotTooDynamic().isSatisfied(index));
 
-		//macdTest(index);
+		macdTest(index);
+		//askForCharts();
+		//testProtector();
 	}
 
 	private void testProtector(){
 
 		try {
-			XTBSymbolOperations api = new XTBSymbolOperations(connector, Configuration.runTestFX);
-			List<TradeRecord> openedPos = api.getOpenedPositions();
-			TradeRecord pos = openedPos.get(0);
-			BigDecimal openPrice = BigDecimal.valueOf(pos.getOpen_price());
-			BigDecimal sl = BigDecimal.valueOf(pos.getSl());
-			BigDecimal vol = BigDecimal.valueOf(pos.getVolume());
-			BigDecimal contractSize = BigDecimal.valueOf(api.getSr().getSymbol().getContractSize());
+			TradeQualityChecker qualityChecker = new TradeQualityChecker(api);
+			SymbolResponseInfo sRes = api.getSymbolResponseInfo();
+			TradeInfo tradeInfo = new TradeInfo(series,TradeType.BUY, new BigDecimal(0.69547), new BigDecimal(0.68445),null,0.05,"sth");
+			qualityChecker.checkTradeNotTooRisky(tradeInfo);
 
-			BigDecimal stopLossInCash = contractSize.multiply(openPrice.subtract(sl).abs()).multiply(vol);
-			BigDecimal stopLossInPln = stopLossInCash.multiply(BigDecimal.valueOf(3.97));
-			System.out.println("Lol");
-
-		} catch (XTBCommunicationException e) {
-			e.printStackTrace();
-		} catch (APIErrorResponse e) {
-			e.printStackTrace();
 		} catch (APICommunicationException e) {
-			e.printStackTrace();
-		} catch (APIReplyParseException e) {
-			e.printStackTrace();
-		} catch (APICommandConstructionException e) {
 			e.printStackTrace();
 		}
 
@@ -253,33 +223,36 @@ public class StrategyTester {
 		System.out.println("Below 0: "+ new UnderIndicatorRule(macdInd.getMacd(), DoubleNum.valueOf(0)).isSatisfied(index));
 		System.out.println("CrossedUp: "+ new CrossedUpIndicatorRule(macdInd.getMacd(), macdInd.getSignal()).isSatisfied(index));
 		System.out.println("CrossedDown: "+ new CrossedDownIndicatorRule(macdInd.getMacd(), macdInd.getSignal()).isSatisfied(index));
-		System.out.println("Over smart trendline 200: "+ new OverIndicatorRule(macdInd.getClosePrice(), macdInd.getSmartTrendLine200()).isSatisfied(index));
-		System.out.println("Over smart parent trendline 50: "+ new OverIndicatorRule(macdInd.getClosePrice(), macdInd.getSmartParentTrendLine50()).isSatisfied(index));
+		System.out.println("Over smart trendline 200: "+ new OverIndicatorRule(macdInd.getClosePrice(), macdInd.getSmartTrendLine200()).isSatisfied(index)+ " trendline val: "+macdInd.getSmartTrendLine200().getValue(index));
+		System.out.println("Over smart parent trendline 50: "+ new OverIndicatorRule(macdInd.getClosePrice(), macdInd.getSmartParentTrendLine50()).isSatisfied(index)+ " trendline val: "+macdInd.getSmartParentTrendLine50().getValue(index));
 		System.out.println("Under smart trendline 200: "+ new UnderIndicatorRule(macdInd.getClosePrice(), macdInd.getSmartTrendLine200()).isSatisfied(index));
 		System.out.println("Under smart parent trendline 50: "+ new UnderIndicatorRule(macdInd.getClosePrice(), macdInd.getSmartParentTrendLine50()).isSatisfied(index));
 	}
 
 
-	private void askForCharts(String symbol) {
-		System.out.println("Do you wish to display trade chart (y/n) ?");
-		Scanner sc = new Scanner(System.in);
-		String ans = sc.nextLine();
-		if(ans.equals("y")){
+	private void askForCharts() {
+//		System.out.println("Do you wish to display trade chart (y/n) ?");
+//		Scanner sc = new Scanner(System.in);
+//		String ans = sc.nextLine();
+//		if(ans.equals("y")){
 			List<Indicator<Num>> inds = new ArrayList<>();
 
 			ClosePriceIndicator closePrice = new ClosePriceIndicator(series);
-			EMAIndicator avg14 = new EMAIndicator(closePrice, 14);
-			StandardDeviationIndicator sd14 = new StandardDeviationIndicator(closePrice, 14);
-			BollingerBandsMiddleIndicator middleBBand = new BollingerBandsMiddleIndicator(avg14);
-			BollingerBandsLowerIndicator lowBBand = new BollingerBandsLowerIndicator(middleBBand, sd14);
-			BollingerBandsUpperIndicator upBBand = new BollingerBandsUpperIndicator(middleBBand, sd14);
-			inds.add(closePrice);
-			inds.add(middleBBand);
-			inds.add(lowBBand);
-			inds.add(upBBand);
+			ClosePriceIndicator closePriceParent = new ClosePriceIndicator(parentSeries);
+			GeneralIndicators genInds = new GeneralIndicators(series, parentSeries);
 
-			MyStrategyCharts.buildIndicatorChart(series, inds, "bband "+symbol);
-		}
+			Indicator trendLine = genInds.getSmartTrendLine200();
+			Indicator parentTrendLine = genInds.getSmartParentTrendLine50();
+			ParentIndicator parentTrendLineTest = new ParentIndicator(new EMASmartIndicator(closePriceParent, 50),4);
+			ParentIndicator closePriceParentTest = new ParentIndicator(closePriceParent, 4);
+			ParentIndicator parentTrendLineTest2 = genInds.getSmartParentTrendLine50();
+			inds.add(parentTrendLineTest2);
+			inds.add(closePriceParentTest);
+
+			//inds.add(parentTrendLine);
+			//inds.add(genInds.getSmartParentTrendLine50());
+			MyStrategyCharts.buildIndicatorChart(series, inds,  "trends "+series.getName());
+//		}
 
 
 	}

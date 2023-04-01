@@ -9,15 +9,17 @@ public class TradeInfo {
     String strategyName;
     BaseBarSeries series;
     Trade.TradeType tradeType;
+    BigDecimal closePrice;
     BigDecimal stopLoss;
     BigDecimal takeProfit;
     Double volume;
 
-    public TradeInfo(BaseBarSeries series, Trade.TradeType tradeType, BigDecimal stopLoss,
+    public TradeInfo(BaseBarSeries series, Trade.TradeType tradeType, BigDecimal closePrice, BigDecimal stopLoss,
                      BigDecimal takeProfit, Double volume, String strategyName) {
         this.strategyName = strategyName;
         this.series = series;
         this.tradeType = tradeType;
+        this.closePrice = closePrice;
         this.stopLoss = stopLoss;
         this.takeProfit = takeProfit;
         this.volume = volume;
@@ -45,6 +47,14 @@ public class TradeInfo {
 
     public void setTradeType(Trade.TradeType tradeType) {
         this.tradeType = tradeType;
+    }
+
+    public BigDecimal getClosePrice() {
+        return closePrice;
+    }
+
+    public void setClosePrice(BigDecimal closePrice) {
+        this.closePrice = closePrice;
     }
 
     public BigDecimal getStopLoss() {
