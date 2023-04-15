@@ -49,15 +49,18 @@ public class PositionChecker {
 
         double dummyVolume = 0.05;
         BaseBarSeries series = tradeInfo.getSeries();
+        logger.info("{} strategy should ENTER on {}. Bar close price {}. Stop Loss: {} Take Profit: {}",
+                tradeInfo.getTradeType(), api.getSymbolResponseInfo().getSymbol(),series.getLastBar().getClosePrice(),
+                tradeInfo.getStopLoss().doubleValue(),tradeInfo.getTakeProfit().doubleValue());
         boolean entered = tradingRecord.enter(series.getEndIndex(), series.getLastBar().getClosePrice(),
                 DoubleNum.valueOf(dummyVolume), tradeInfo.getStrategyName());
         if (entered) {
             api.enter(tradeInfo.getTradeType(), tradeInfo.getStopLoss().doubleValue(), tradeInfo.getTakeProfit().doubleValue(),
                     tradeInfo.getVolume(), tradeInfo.getStrategyName());
-            logger.info("Opened in XTB successfully");
+            logger.info("Opened in XTB successfully. Expected stoploss value {}", tradeInfo.getStopLossValue());
             return true;
         } else {
-            logger.error("Didn't enter {} position for: {}",tradeInfo.getTradeType(),series.getName());
+            logger.info("Didn't enter {} position for: {}",tradeInfo.getTradeType(),series.getName());
         }
 
         return false;
@@ -75,7 +78,7 @@ public class PositionChecker {
             logger.info("Closed in XTB successfully");
             return true;
         } else {
-            logger.error("Didn't enter {} position for: {}",tradeType, positionInfo.getSymbol());
+            logger.info("Didn't enter {} position for: {}",tradeType, positionInfo.getSymbol());
         }
 
         return false;

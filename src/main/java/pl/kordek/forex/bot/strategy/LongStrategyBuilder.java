@@ -19,25 +19,30 @@ import pl.kordek.forex.bot.rules.IchimokuRules;
 import pl.kordek.forex.bot.rules.PriceActionRules;
 
 public class LongStrategyBuilder extends StrategyBuilder {
-
     private Rule stopLossNotExceedingBounds;
     private Rule longSignalsPrevail;
     private final int rsiStrong = 70;
 
 
 
-    public LongStrategyBuilder(BaseBarSeries series, BaseBarSeries parentSeries, Indicator stopLossStrategy, Boolean shouldCloseOnStrongRSI) {
+    public LongStrategyBuilder(BaseBarSeries series, BaseBarSeries parentSeries, Indicator stopLossStrategy, Boolean shouldCloseOnMaxPriceCrossingTP, Boolean shouldCloseOnStrongRSI) {
         super(series,parentSeries);
 
         this.tradeType = TradeType.BUY;
         this.typeOfOperation = 0;
         this.stopLossStrategy = stopLossStrategy;
 
-        this.stopLossNotExceedingBounds = new IsEqualRule(
-                new StopLossIndicator(stopLossStrategy, series, Trade.TradeType.BUY, Configuration.stopLossMaxATR, Configuration.stopLossMinATR), DoubleNum.valueOf(0)).negation();
+        Indicator stoplossIndicator = new StopLossIndicator(stopLossStrategy, series, Trade.TradeType.BUY, Configuration.stopLossMaxATR, Configuration.stopLossMinATR);
+        Rule stopGainBySL = new StopGainBySLIndRule(series, stoplossIndicator, Configuration.takeProfitVsStopLossCoeff);
+
+        this.stopLossNotExceedingBounds = new IsEqualRule( stoplossIndicator, DoubleNum.valueOf(0)).negation();
         this.longSignalsPrevail = priceActionRules.getLongSignalsPrevailRule(1);
 
-        this.exitRule = new BooleanRule(shouldCloseOnStrongRSI).and(new OverIndicatorRule(generalIndicators.getRsi(), 70));
+        Rule exitOnStrongRSIRule = new BooleanRule(shouldCloseOnStrongRSI).and(new OverIndicatorRule(generalIndicators.getRsi(), 75));
+
+        //this is in case the high price crosses TP but the trade is not closed (cause spread)
+        Rule exitOnPriceCrossingTP = new BooleanRule(shouldCloseOnMaxPriceCrossingTP).and(stopGainBySL);
+        this.exitRule = exitOnStrongRSIRule.or(exitOnPriceCrossingTP);
     }
 
     @Override
@@ -46,8 +51,6 @@ public class LongStrategyBuilder extends StrategyBuilder {
         Rule macdEntry = new OverIndicatorRule(macdInd.getClosePrice(), macdInd.getTrendLine200())
                 .and(new CrossedUpIndicatorRule(macdInd.getMacd(), macdInd.getSignal()))
                 .and(new UnderIndicatorRule(macdInd.getMacd(), DoubleNum.valueOf(0)))
-                //.and(priceActionRules.getLongSignalsPrevailRule(0))
-                //.and(priceActionRules.getPriceActionNotTooDynamic())
                 .and(stopLossNotExceedingBounds);
         return new BaseStrategy("MACD", macdEntry, exitRule);
     }
@@ -69,7 +72,6 @@ public class LongStrategyBuilder extends StrategyBuilder {
                 .and(tenkanOverCloud)
                 .and(tenkanCrossesKijunUp)
                 .and(priceOverTenkan)
-                //.and(priceActionRules.getPriceActionNotTooDynamic())
                 .and(stopLossNotExceedingBounds);
         return new BaseStrategy("Ichimoku", ichimokuEntry, exitRule);
     }
@@ -109,8 +111,6 @@ public class LongStrategyBuilder extends StrategyBuilder {
 
         Rule bbEntry = new OverIndicatorRule(genInd.getClosePrice(), genInd.getTrendLine200())
                 .and(new CrossedDownIndicatorRule(genInd.getClosePrice(), bbandInd.getLowBBand()))
-                //.and(priceActionRules.getLongSignalsPrevailRule(0))
-                //.and(priceActionRules.getPriceActionNotTooDynamic())
                 .and(stopLossNotExceedingBounds);
 
 

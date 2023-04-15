@@ -26,10 +26,7 @@ import pro.xstore.api.sync.SyncAPIConnector;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
+import java.time.*;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
@@ -48,6 +45,7 @@ public class XTBAPIImpl implements BrokerAPI {
         buildTradeTypeMap();
         try {
             this.connector = new SyncAPIConnector(Configuration.server);
+
             login(Configuration.username, Configuration.password);
             this.accountInfo = retrieveAccountInfo();
         } catch (IOException e) {
@@ -60,12 +58,13 @@ public class XTBAPIImpl implements BrokerAPI {
         try {
             LoginResponse loginResponse = APICommandFactory.executeLoginCommand(connector,
                     new Credentials(login, password));
+            Thread.sleep(250);
             if (loginResponse != null && !loginResponse.getStatus()) {
-                throw new APICommunicationException("Failed to login");
+                throw new APICommunicationException("Failed to login with the given credentials");
             }
         } catch (APICommandConstructionException | APIReplyParseException | APICommunicationException |
-                APIErrorResponse | IOException e1) {
-            throw new APICommunicationException("Failed to login");
+                APIErrorResponse | IOException | InterruptedException e1) {
+            throw new APICommunicationException(e1.getMessage());
         }
     }
 
@@ -121,6 +120,7 @@ public class XTBAPIImpl implements BrokerAPI {
         BigDecimal optimalVolume = BigDecimal.valueOf(1);
         try {
             marginLevelResponse = APICommandFactory.executeMarginLevelCommand(connector);
+            Thread.sleep(250);
             BigDecimal balance = BigDecimal.valueOf(marginLevelResponse.getBalance());
             BigDecimal balancePerTrade = balance.divide(BigDecimal.valueOf(Configuration.maxNumberOfPositionsOpen), 2, RoundingMode.HALF_UP);
 
@@ -157,13 +157,15 @@ public class XTBAPIImpl implements BrokerAPI {
     public void initSymbolOperations(String symbol) throws APICommunicationException {
         try {
             SymbolResponse sr  = APICommandFactory.executeSymbolCommand(connector, symbol);
+            Thread.sleep(250);
             symbolInfo = new SymbolResponseInfo();
             symbolInfo.setAsk(sr.getSymbol().getAsk());
             symbolInfo.setBid(sr.getSymbol().getBid());
             symbolInfo.setPrecision(sr.getSymbol().getPrecision());
             symbolInfo.setSpreadRaw(sr.getSymbol().getSpreadRaw());
             symbolInfo.setSymbol(sr.getSymbol().getSymbol());
-        } catch (APICommandConstructionException | APIReplyParseException | APIErrorResponse | APICommunicationException e) {
+            symbolInfo.setContractSizeForOneLot(sr.getSymbol().getContractSize());
+        } catch (APICommandConstructionException | APIReplyParseException | APIErrorResponse | APICommunicationException | InterruptedException e) {
             throw new APICommunicationException("Can't get symbol response from XTB broker");
         }
     }
@@ -199,6 +201,10 @@ public class XTBAPIImpl implements BrokerAPI {
         return convertResultChartsToBarSeries(cr.getRateInfos(), symbolInfo.getSymbol(), symbolInfo.getPrecision(), duration);
     }
 
+    public SyncAPIConnector getConnector() {
+        return connector;
+    }
+
     private BaseBarSeries convertResultChartsToBarSeries(List<RateInfoRecord> rateInfoRecords, String symbol, int precisionNumber, Duration duration) {
         List<Bar> barList = new ArrayList<>();
         for (RateInfoRecord rateInfoRecord : rateInfoRecords) {
@@ -219,9 +225,18 @@ public class XTBAPIImpl implements BrokerAPI {
 
             BaseBar Bar = new BaseBar(duration, endTime, openD, highD, lowD, closeD,
                     rateInfoRecord.getVol());
+
             if(!(open.equals(close) && low.equals(high)))
                 barList.add(Bar);
         }
+        //xtb returns an unfinished candle at the end - we want to delete it
+        int minuteOfLastBar = barList.get(barList.size()-1).getEndTime().getMinute();
+        int minuteOfNextBar = barList.get(barList.size()-1).getEndTime().plusMinutes(Configuration.candlePeriod.getCode()).getMinute();
+
+        if(minuteOfLastBar == LocalDateTime.now().getMinute()){
+            barList.remove(barList.size()-1);
+        }
+
         return new BaseBarSeries(symbol, barList);
     }
 
@@ -230,9 +245,10 @@ public class XTBAPIImpl implements BrokerAPI {
         List<TradeRecord> openedPositionsTR = null;
         try {
             TradesResponse tradeResponse = APICommandFactory.executeTradesCommand(connector, true);
+            Thread.sleep(250);
             openedPositionsTR = tradeResponse.getTradeRecords();
         } catch (APICommandConstructionException | APIReplyParseException | APICommunicationException
-                | APIErrorResponse e) {
+                | APIErrorResponse | InterruptedException e) {
             throw new APICommunicationException("Couldn't retrieve opened positions in XTB");
         }
 

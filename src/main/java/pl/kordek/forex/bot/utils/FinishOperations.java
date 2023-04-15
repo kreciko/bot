@@ -5,6 +5,7 @@ import org.apache.logging.log4j.Logger;
 import org.ta4j.core.BaseBarSeries;
 import org.ta4j.core.TradingRecord;
 import pl.kordek.forex.bot.Robot;
+import pl.kordek.forex.bot.constants.Configuration;
 import pl.kordek.forex.bot.domain.BlackListOperation;
 import pl.kordek.forex.bot.domain.PositionInfo;
 import pl.kordek.forex.bot.domain.RobotInfo;
@@ -53,15 +54,21 @@ public class FinishOperations {
 
         long durationMilis = durationPeriod.toMillis();
         long dateStart = new Date().getTime() - durationMilis;
+        long breakInTrading = Configuration.breakInTradingForSymbol;
 
         TradesHistoryResponse tHistoryResponse;
         try {
+            Thread.sleep(250);
             tHistoryResponse = APICommandFactory.executeTradesHistoryCommand(connector, dateStart, 0L);
 
+
+            Duration timePassedDuration = null;
             for (TradeRecord t : tHistoryResponse.getTradeRecords()) {
-                if (t.getProfit() < 0 && !blackList.containsKey(t.getSymbol())) {
+                Long timePassed = new Date().getTime() - t.getClose_time();
+                timePassedDuration = Duration.ofMillis(timePassed);
+                if ( timePassedDuration.toHours() < breakInTrading && !blackList.containsKey(t.getSymbol())) {
                     blackList.put(t.getSymbol(), new BlackListOperation(t.getSymbol(), t.getCmd(), t.getClose_time()));
-                    System.out.println(new Date() + ": Putting symbol " + t.getSymbol() + " to the black list");
+                    logger.info("Putting symbol {} to the black list. Because trade was finished within the last {} h",t.getSymbol(), breakInTrading);
                 }
             }
 
@@ -71,19 +78,18 @@ public class FinishOperations {
                 BlackListOperation t = pair.getValue();
                 Long timePassed = new Date().getTime() - t.getCloseTime();
                 Duration d = Duration.ofMillis(timePassed);
-                if (d.toHours() > 5L) {
+                if (d.toHours() > breakInTrading) {
                     blackList.remove(pair.getKey());
-                    System.out.println(new Date() + ": Removing symbol " + pair.getKey() + " from the black list");
+                    logger.info("Removing symbol " + pair.getKey() + " from the black list");
                 }
             }
 
-        } catch (APICommandConstructionException | APICommunicationException | APIReplyParseException
-                | APIErrorResponse e1) {
+        } catch (APICommandConstructionException | APICommunicationException | APIReplyParseException | APIErrorResponse | InterruptedException e1) {
             throw new XTBCommunicationException("Couldn't get trade history from xtb");
         }
     }
 
-    public void serializeFiles(String robotInfoFileLocation) throws SerializationFailedException
+    public void serializeFiles(String robotInfoFileLocation) throws IOException
     {
         List<HashMap<String, TradingRecord>> tradingRecordsMaps = new ArrayList<>();
         tradingRecordsMaps.add(longTradingRecordsMap);
@@ -93,13 +99,13 @@ public class FinishOperations {
         try (ObjectOutputStream outputStream = new ObjectOutputStream(new FileOutputStream(robotInfoFileLocation))) {
             outputStream.writeObject(info);
         } catch (IOException e) {
-            throw new SerializationFailedException("Serialization failed");
+            throw e;
         }
     }
 
     public void printIterationInfos(List<PositionInfo> openedPositionsList , List<String> spreadTooLargeSymbols){
         logger.info("{} robot iteration. Positions opened: {}", robotIteration, openedPositionsList.stream().map(e -> e.getSymbol()).collect(toList()));
-        //logger.info("Black list: "+blackList.values().stream().map(e -> e.getInstrument() + " " + e.getTypeOfOperation()).collect(toList()));
+        logger.info("Black list: "+blackList.values().stream().map(e -> e.getInstrument() + " " + e.getTypeOfOperation()).collect(toList()));
         logger.info("Spread too wide for following: {}",spreadTooLargeSymbols);
     }
 

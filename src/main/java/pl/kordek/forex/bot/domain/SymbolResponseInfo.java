@@ -6,6 +6,7 @@ public class SymbolResponseInfo {
     private Double bid;
     private Double ask;
     private String symbol;
+    private Long contractSizeForOneLot;
 
     public Double getSpreadRaw() {
         return spreadRaw;
@@ -45,5 +46,13 @@ public class SymbolResponseInfo {
 
     public void setSymbol(String symbol) {
         this.symbol = symbol;
+    }
+
+    public Long getContractSizeForOneLot() {
+        return contractSizeForOneLot;
+    }
+
+    public void setContractSizeForOneLot(Long contractSizeForOneLot) {
+        this.contractSizeForOneLot = contractSizeForOneLot;
     }
 }

@@ -47,7 +47,7 @@ public class InitOperations {
                 logger.info("Init trading record for {}", symbol);
             }
 
-            return new RobotInfo(longTradingRecordsMap, shortTradingRecordsMap, null, blackList, 0);
+            return new RobotInfo(longTradingRecordsMap, shortTradingRecordsMap, new HashMap<>(), blackList, 0);
         } catch (IOException e) {
             throw new SerializationFailedException("Deserialization failed. IO Exception");
         } catch (ClassNotFoundException e) {
@@ -61,7 +61,7 @@ public class InitOperations {
         InputStream stream = Robot.class.getClassLoader().getResourceAsStream("winning_ratios.csv");
         String strategyName = "";
 
-        try (CSVReader csvReader = new CSVReader(new InputStreamReader(stream, Charset.forName("UTF-8")), ';', '"',1)) {
+        try (CSVReader csvReader = new CSVReader(new InputStreamReader(stream, Charset.forName("UTF-8")), ';', '"',0)) {
             String[] line;
             while ((line = csvReader.readNext()) != null) {
                 if(!line[0].equals(strategyName)){

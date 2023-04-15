@@ -10,9 +10,7 @@ import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.time.DateUtils;
 
 public interface Configuration {
-	ServerEnum server = ServerEnum.DEMO;
-
-	int waitingTime = 12000;
+	ServerEnum server = ServerEnum.REAL;
 
     String realUsrName = "1426627";
     String realPassword = "youw1nKordian!";
@@ -23,15 +21,15 @@ public interface Configuration {
     String demoUsrName = "10953995";
     String demoPassword = "youw1nKordian!";
 
-    String demoEURUsrName = "13220387";
+    String demoEURUsrName = "14587971";
     String demoEURPassword = "youw1nKordian!";
 
-	String username = demoUsrName;
-	String password = demoPassword;
+	String username = realEURUsrName;
+	String password = realEURPassword;
 
-	String[] oneFX = {"USDCHF"};
+	String[] oneFX = {"GBPCHF"};
 
-	String[] customFX = {"EURUSD", "NZDUSD", "USDJPY", "EURGBP","USDCHF", "AUDUSD","GBPUSD","EURCHF","AUDJPY"};
+	String[] customFX = {"EURUSD", "NZDUSD", "USDCHF", "AUDJPY"};
 	String[] halfMajorFX = {"AUDUSD","EURGBP","EURJPY","EURUSD","GBPCHF","GBPJPY"} ;
 	String[] majorFX = {"AUDUSD","EURCHF","EURGBP","EURJPY","EURUSD","GBPCHF","GBPJPY","GBPUSD","NZDUSD", "USDCHF","USDJPY", "USDCAD"};
 	String[] allFX = {"AUDUSD","EURGBP","EURJPY","EURUSD","GBPCHF","GBPJPY","GBPUSD","NZDUSD","USDCAD","USDCHF","USDJPY",
@@ -40,7 +38,7 @@ public interface Configuration {
 
 	String[] customCmd = {"OIL", "GOLD"};
 
-    String[][] strongCorrelation = {{"AUDUSD","NZDUSD"},{"NZDUSD","AUDUSD"}};
+    String[] correlationException = {"EURPLN"};
 
 	String[] instrumentsFX = customFX;
 
@@ -67,8 +65,8 @@ public interface Configuration {
 
     //test vars
     Boolean runTest = false;
-    String[] runTestFX ={"NZDUSD"};
-    int testedIndex = 3;
+    String[] runTestFX ={"AUDJPY"};
+    int testedIndex = 0;
     int testWaitingTime = 1000;
 
     Boolean runBot = true;
@@ -82,4 +80,7 @@ public interface Configuration {
     Double volumeResizeFactor = 0.8;
 
     Double maxRiskPrc = 0.03;
+    Double minRiskPrc = 0.015;
+
+    Long breakInTradingForSymbol = 1L;
 }

@@ -16,30 +16,33 @@ public class ShortStrategyBuilder extends StrategyBuilder {
     private Rule shortSignalsPrevail;
     private final int rsiStrong = 30;
 
-    public ShortStrategyBuilder(BaseBarSeries series, BaseBarSeries parentSeries, Indicator stopLossStrategy, Boolean shouldCloseOnStrongRSI) {
+    public ShortStrategyBuilder(BaseBarSeries series, BaseBarSeries parentSeries, Indicator stopLossStrategy, Boolean shouldCloseOnMaxPriceCrossingTP, Boolean shouldCloseOnStrongRSI) {
         super(series,parentSeries);
 
         this.tradeType = TradeType.SELL;
         this.typeOfOperation = 0;
         this.stopLossStrategy = stopLossStrategy;
 
-        this.stopLossNotExceedingBounds = new IsEqualRule(
-                new StopLossIndicator(stopLossStrategy, series, Trade.TradeType.SELL, Configuration.stopLossMaxATR, Configuration.stopLossMinATR), DoubleNum.valueOf(0)).negation();
+        Indicator stoplossIndicator = new StopLossIndicator(stopLossStrategy, series, Trade.TradeType.SELL, Configuration.stopLossMaxATR, Configuration.stopLossMinATR);
+        Rule stopGainBySL = new StopGainBySLIndRule(series, stoplossIndicator, Configuration.takeProfitVsStopLossCoeff);
+
+        this.stopLossNotExceedingBounds = new IsEqualRule(stoplossIndicator, DoubleNum.valueOf(0)).negation();
         this.shortSignalsPrevail = priceActionRules.getShortSignalsPrevailRule(1);
 
-        this.exitRule = new BooleanRule(shouldCloseOnStrongRSI).and(new UnderIndicatorRule(generalIndicators.getRsi(), 30));
 
+        Rule exitOnStrongRSIRule = new BooleanRule(shouldCloseOnStrongRSI).and(new UnderIndicatorRule(generalIndicators.getRsi(), 25));
+
+        //this is in case the low price crosses TP but the trade is not closed (cause spread)
+        Rule exitOnPriceCrossingTP = new BooleanRule(shouldCloseOnMaxPriceCrossingTP).and(stopGainBySL);
+        this.exitRule = exitOnStrongRSIRule.or(exitOnPriceCrossingTP);
     }
 
     @Override
     public Strategy buildMACDStrategy() {
         MACDIndicators macdInd = new MACDIndicators(series, parentSeries);
-        Rule macdEntry = new UnderIndicatorRule(macdInd.getClosePrice(), macdInd.getSmartTrendLine200())
-                .and(new UnderIndicatorRule(macdInd.getClosePriceParentInd(), macdInd.getSmartParentTrendLine50()))
+        Rule macdEntry = new UnderIndicatorRule(macdInd.getClosePrice(), macdInd.getTrendLine200())
                 .and(new CrossedDownIndicatorRule(macdInd.getMacd(), macdInd.getSignal()))
                 .and(new OverIndicatorRule(macdInd.getMacd(), DoubleNum.valueOf(0)))
-                .and(priceActionRules.getShortSignalsPrevailRule(0))
-                .and(priceActionRules.getPriceActionNotTooDynamic())
                 .and(stopLossNotExceedingBounds);
         return new BaseStrategy("MACD", macdEntry, exitRule);
     }
@@ -61,8 +64,6 @@ public class ShortStrategyBuilder extends StrategyBuilder {
                 .and(tenkanUnderCloud)
                 .and(tenkanCrossesKijunDown)
                 .and(priceUnderTenkan)
-                .and(priceActionRules.getLongSignalsPrevailRule(1))
-                .and(priceActionRules.getPriceActionNotTooDynamic())
                 .and(stopLossNotExceedingBounds);
         return new BaseStrategy("Ichimoku", ichimokuEntry, exitRule);
     }
@@ -100,11 +101,8 @@ public class ShortStrategyBuilder extends StrategyBuilder {
         GeneralIndicators genInd = new GeneralIndicators(series, parentSeries);
         BollingerBandsIndicators bbandInd = new BollingerBandsIndicators(series, parentSeries);
 
-        Rule bbEntry = new UnderIndicatorRule(genInd.getClosePrice(), genInd.getSmartTrendLine200())
-                .and(new UnderIndicatorRule(genInd.getClosePriceParentInd(), genInd.getSmartParentTrendLine50()))
+        Rule bbEntry = new UnderIndicatorRule(genInd.getClosePrice(), genInd.getTrendLine200())
                 .and(new CrossedUpIndicatorRule(genInd.getClosePrice(), bbandInd.getUpBBand()))
-                .and(priceActionRules.getShortSignalsPrevailRule(0))
-                .and(priceActionRules.getPriceActionNotTooDynamic())
                 .and(stopLossNotExceedingBounds);
 
 

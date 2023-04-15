@@ -48,10 +48,10 @@ public abstract class StrategyBuilder {
     public List<Strategy> getStrategyList(){
         ArrayList<Strategy> strategies = new ArrayList<>();
         strategies.add(buildMACDStrategy());
-  //      strategies.add(buildIchimokuStrategy(series.getEndIndex()));
+ //       strategies.add(buildIchimokuStrategy(series.getEndIndex()));
  //       strategies.add(buildPriceActionStrategy());
  //       strategies.add(buildDonchianStrategy());
- //       strategies.add(buildBollingerBandsStrategy());
+        strategies.add(buildBollingerBandsStrategy());
         return strategies;
     }
 
